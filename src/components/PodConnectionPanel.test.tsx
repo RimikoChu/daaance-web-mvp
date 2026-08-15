@@ -31,6 +31,22 @@ afterEach(() => {
 })
 
 describe('PodConnectionPanel', () => {
+  it('renders a compact status action and reports every state transition', async () => {
+    const onStatesChange = vi.fn()
+    render(<PodConnectionPanel variant="compact" onReady={vi.fn()} onStatesChange={onStatesChange} />)
+
+    expect(document.querySelector('.pod-connection-panel')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
+
+    await waitFor(() => expect(screen.getByText('4 / 4')).toBeInTheDocument())
+    expect(onStatesChange).toHaveBeenCalledWith(expect.objectContaining({
+      LEFT_WRIST: 'demo',
+      RIGHT_WRIST: 'demo',
+      LEFT_ANKLE: 'demo',
+      RIGHT_ANKLE: 'demo',
+    }))
+  })
+
   it('connects all four Pods together and falls back to Demo 50Hz', async () => {
     render(<PodConnectionPanel onReady={vi.fn()} />)
 

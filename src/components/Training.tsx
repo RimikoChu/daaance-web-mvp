@@ -90,7 +90,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
     onFinish(CHOREOGRAPHY.map(event => analyzeTiming(event, source.getSamples(event), TOLERANCE[strictness])))
   }
 
-  return <main className="training-page">
+  return <main className="training-page soft-glass-theme">
     <header>
       <div className="logo"><span>Daaance!</span><i /></div>
       <div className="training-mode"><span className="live-dot" />{feedbackMode === 'accessibility' ? '无障碍模式' : '节奏教练模式'}</div>
@@ -107,7 +107,9 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
           <button disabled={!mediaAvailable} aria-pressed={learningMode === 'teaching'} className={learningMode === 'teaching' ? 'selected' : ''} onClick={() => setLearningMode('teaching')}>教学模式</button>
           <button disabled={!mediaAvailable} aria-pressed={learningMode === 'follow'} className={learningMode === 'follow' ? 'selected' : ''} onClick={() => setLearningMode('follow')}>跟跳模式</button>
         </div>
-        <div className="video-stage">
+        <div className="stage-top"><span>示范舞段 · 基础律动</span><strong>{Math.floor(currentTime).toString().padStart(2, '0')} / {Math.round(duration)} 秒</strong></div>
+        <div className="teacher-stage video-stage">
+          <div className="beat-grid" />
           <video
             ref={videoRef}
             aria-label="18.66 秒舞蹈示范"

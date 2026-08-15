@@ -13,6 +13,15 @@ describe('Training', () => {
 
   afterEach(() => vi.restoreAllMocks())
 
+  it('keeps the original training stage frame around the dance video', () => {
+    renderTraining()
+
+    const video = screen.getByLabelText('18.66 秒舞蹈示范')
+    expect(video.closest('.teacher-stage')).toBeInTheDocument()
+    expect(document.querySelector('.training-layout aside .device-grid')).toBeInTheDocument()
+    expect(screen.getByText('示范舞段 · 基础律动')).toBeInTheDocument()
+  })
+
   it('renders the supplied video and preserves time while switching modes', () => {
     renderTraining()
     const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
