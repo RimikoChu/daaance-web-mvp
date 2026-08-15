@@ -23,18 +23,22 @@ The implementation will preserve the existing motion analysis and demo UI while 
 
 ## BLE Configuration
 
-Create `src/hardware/ble/bleConfig.ts` with one centralized configuration object:
+Create `src/hardware/ble/bleConfig.ts` with the frozen canonical names and UUIDs:
 
 ```ts
-export const DAAANCE_BLE_CONFIG = {
-  deviceName: 'DAAANCE_LW',
-  serviceUuid: '',
-  txCharacteristicUuid: '',
-  rxCharacteristicUuid: '',
+export const DAAANCE_DEVICE_NAMES = {
+  left_wrist: 'DAAANCE_LW',
+  right_wrist: 'DAAANCE_RW',
+  left_ankle: 'DAAANCE_LA',
+  right_ankle: 'DAAANCE_RA',
 } as const
+
+export const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+export const POD_RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
+export const POD_TX_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
 ```
 
-No UUID may be duplicated in React components or other application files. If any UUID is empty, `connect()` must stop before `requestDevice` and expose the exact UI message `BLE protocol not configured`.
+RX/TX names are always from the Pod perspective: the web writes raw UTF-8 commands to `POD_RX_UUID`; the Pod notifies events from `POD_TX_UUID`. Ambiguous `TX_UUID`, `RX_UUID`, `txCharacteristicUuid`, and `rxCharacteristicUuid` names are prohibited. v0.1 has no STATUS UUID. No UUID may be duplicated in React components or other application files, and protocol naming must not change without user approval.
 
 ## BLE Protocol Types and Parsing
 
@@ -52,6 +56,8 @@ TX notifications contain one UTF-8 JSON object per notification. Parsing rules:
 - Unknown events are ignored and recorded with a concise `console.debug` entry.
 - A bad notification cannot unsubscribe or stop later notifications.
 - Only packets for `left_wrist` update phase-one hardware state.
+- Event and JSON field names are case-sensitive and have no aliases; `firmware` must never be shortened to `fw`.
+- Mock packet fixtures use the same canonical JSON schema as real Pod notifications.
 
 Each normalized BLE IMU sample retains both clocks:
 
@@ -73,9 +79,9 @@ subscribe(listener: (event: BluetoothPodEvent) => void): () => void
 
 Responsibilities:
 
-1. Validate UUID configuration.
+1. Use the frozen canonical UUID constants.
 2. Verify `navigator.bluetooth`; otherwise expose `Web Bluetooth is not supported in this browser. Please use Chrome or Edge.` without crashing the page.
-3. Call `requestDevice` with the exact name `DAAANCE_LW` and the configured service as an optional service.
+3. Call `requestDevice` with the exact name `DAAANCE_LW` and `SERVICE_UUID` as an optional service.
 4. Connect GATT, discover the configured service, then discover TX and RX characteristics.
 5. Subscribe to TX notifications and decode them independently.
 6. Write commands to RX as UTF-8 text, preferring `writeValueWithoutResponse` when supported and falling back to `writeValue`.
@@ -83,6 +89,7 @@ Responsibilities:
 8. Make explicit `disconnect()` idempotent and complete all listener cleanup.
 
 The `BluetoothDevice`, GATT server, service, and characteristics remain in memory only. They are never serialized to localStorage.
+Production code uses the browser's real `navigator.bluetooth`; test code may inject a typed `BluetoothLike` fake into the client boundary, but the Web app must not polyfill or fake `navigator.bluetooth`.
 
 ## Stable App-Level Hardware State
 
@@ -158,7 +165,6 @@ Command errors update debug/connection status but do not crash training or disca
 
 ## Failure and Fallback Behavior
 
-- Empty UUIDs: `BLE protocol not configured`; no device chooser opens.
 - Unsupported browser: show the exact Chrome/Edge guidance; Demo remains available.
 - User cancels chooser: remain non-connected and show a cancellation/error state; never mark real hardware successful.
 - Discovery, notification, or write failure: show a real hardware error/disconnected state; Demo remains an explicit choice.
@@ -171,7 +177,7 @@ Command errors update debug/connection status but do not crash training or disca
 All behavior changes follow test-first development.
 
 1. Parser tests cover every known packet, malformed JSON, invalid fields, unknown events, and recovery on a later good packet.
-2. Client tests cover empty UUID blocking, unsupported browser, request options, discovery, notification lifecycle, UTF-8 commands, disconnect cleanup, and reconnect readiness.
+2. Client tests cover canonical UUID/name usage, unsupported browser, request options, discovery, notification lifecycle, raw UTF-8 commands, disconnect cleanup, and reconnect readiness.
 3. Data-source tests cover dual timestamps, left-wrist buffering, event-window reads, and Hybrid limb routing.
 4. App/Pod tests cover one real left wrist plus three Mock Pods, failure/cancel truthfulness, and persistent client ownership across screens.
 5. Hardware Test tests cover telemetry, live values, event history, control enablement, and exact command mapping.
@@ -186,12 +192,13 @@ All behavior changes follow test-first development.
 - Cloud BLE.
 - New authentication or database schema.
 - Rewriting UI, choreography, motion recognition, or the existing demo flow.
+- XIAO D0–D10, vibration, LED, button, IMU, I2C, battery, or any other physical pin/electrical mapping; Web code must not depend on GPIO assignments.
 
 ## Acceptance Criteria
 
 The phase is complete when:
 
-1. A configured Chrome/Edge session can connect only to `DAAANCE_LW` and subscribe to its TX characteristic.
+1. A Chrome/Edge session can connect only to `DAAANCE_LW`, subscribe to `POD_TX_UUID`, and write commands to `POD_RX_UUID`.
 2. Hardware Test shows firmware, live six-axis values, last packet time, and approximately 50Hz measured receive rate.
 3. Short vibration sends `VIBRATE_SHORT` and the physical Pod vibrates.
 4. Training waits for `COUNTDOWN_DONE`, supports the specified timeout choices, and plays the existing 18.66-second video after success.

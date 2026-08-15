@@ -22,10 +22,3 @@ export class MockMotionDataSource implements MotionDataSource {
     return { timestamp, limb: event.limb, ax: force, ay: force * 0.35, az: 1 + force * 0.2, gx: rotation, gy: rotation * 0.4, gz: rotation * 0.15 }
   }
 }
-
-export class BLEMotionDataSource implements MotionDataSource {
-  readonly kind = 'ble' as const
-  async connect() { throw new Error('BLE 尚未连接，已切换到模拟模式') }
-  async disconnect() {}
-  getSamples(_event: ChoreographyEvent): IMUSample[] { return [] }
-}

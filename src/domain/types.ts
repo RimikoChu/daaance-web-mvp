@@ -13,6 +13,8 @@ export interface ChoreographyEvent {
 
 export interface IMUSample {
   timestamp: number
+  hardwareTimestamp?: number
+  receivedAt?: number
   limb: Limb
   ax: number
   ay: number
@@ -32,7 +34,7 @@ export interface TimingResult {
 }
 
 export interface MotionDataSource {
-  readonly kind: 'mock' | 'ble'
+  readonly kind: 'mock' | 'ble' | 'hybrid'
   connect(): Promise<void>
   disconnect(): Promise<void>
   getSamples(event: ChoreographyEvent): IMUSample[]

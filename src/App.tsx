@@ -2,12 +2,20 @@ import { useCallback, useRef, useState } from 'react'
 import { Activity, ArrowLeft, Check, ChevronRight, CirclePlay, Footprints, RotateCcw, Sparkles, Volume2, Waves } from 'lucide-react'
 import { LIMB_LABEL } from './domain/choreography'
 import { summarizeSession } from './domain/motion'
-import type { Limb, Strictness, TimingResult, TrainingMode } from './domain/types'
+import { BLEMotionDataSource } from './domain/bleMotionDataSource'
+import { HybridMotionDataSource } from './domain/hybridMotionDataSource'
+import { MockMotionDataSource } from './domain/mockMotionDataSource'
+import type { Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from './domain/types'
 import { initialPodStates, PodConnectionPanel } from './components/PodConnectionPanel'
 import type { PodConnectionHandle, PodStates } from './components/PodConnectionPanel'
+import { BluetoothPodClient } from './hardware/ble/BluetoothPodClient'
+import { useLeftWristHardware } from './hardware/useLeftWristHardware'
+import type { LeftWristHardwareClient, LeftWristHardwareController } from './hardware/useLeftWristHardware'
+import { HardwareTestPanel } from './hardware/HardwareTestPanel'
 import { Training } from './components/Training'
+import { CountdownGate } from './components/CountdownGate'
 
-type Screen = 'home' | 'setup' | 'training' | 'results'
+type Screen = 'home' | 'setup' | 'countdown' | 'training' | 'results'
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
 
 function Logo() {
@@ -15,15 +23,23 @@ function Logo() {
 }
 
 const POD_STATUS_LABEL = {
-  disconnected: '未连接',
-  connecting: '连接中…',
-  hardware: '硬件 · 已连接',
-  demo: 'Demo · 50Hz',
+  'real-disconnected': 'Real hardware · Not connected',
+  'real-connecting': 'Real hardware · Connecting…',
+  'real-connected': 'Real hardware · Connected',
+  'real-error': 'Real hardware · Error',
+  demo: 'Demo',
+}
+
+function podVisualState(state: PodStates[Limb]): string {
+  if (state === 'real-connecting') return 'connecting'
+  if (state === 'real-connected') return 'hardware'
+  if (state === 'demo') return 'demo'
+  return 'disconnected'
 }
 
 function DeviceGrid({ active, error, podStates }: { active?: Limb; error?: Limb; podStates?: PodStates }) {
   return <div className="device-grid">
-    {LIMBS.map(limb => <div key={limb} className={`device-chip ${podStates?.[limb] ?? ''} ${active === limb ? 'active' : ''} ${error === limb ? 'error' : ''}`}>
+    {LIMBS.map(limb => <div key={limb} className={`device-chip ${podStates?.[limb] ?? ''} ${podStates ? podVisualState(podStates[limb]) : ''} ${active === limb ? 'active' : ''} ${error === limb ? 'error' : ''}`}>
       <span className="device-dot" />
       <span>{LIMB_LABEL[limb]}</span>
       <small>{error === limb ? (limb.includes('WRIST') ? '红灯纠错' : '震动纠错') : active === limb ? '动作中' : podStates ? POD_STATUS_LABEL[podStates[limb]] : '已连接'}</small>
@@ -31,26 +47,28 @@ function DeviceGrid({ active, error, podStates }: { active?: Limb; error?: Limb;
   </div>
 }
 
-function Home({ onStart }: { onStart: () => void }) {
-  const [podsReady, setPodsReady] = useState(false)
+function Home({ controller, onStart }: { controller: LeftWristHardwareController; onStart: (useRealHardware: boolean) => void }) {
   const [podStates, setPodStates] = useState<PodStates>(() => ({ ...initialPodStates }))
+  const podsReady = podStates.LEFT_WRIST === 'real-connected' || podStates.LEFT_WRIST === 'demo'
   const connectionRef = useRef<PodConnectionHandle>(null)
   const startRequested = useRef(false)
   const handleReady = useCallback(() => {
-    setPodsReady(true)
-    if (startRequested.current) onStart()
-  }, [onStart])
+    if (startRequested.current) onStart(controller.snapshot.state === 'connected')
+  }, [controller.snapshot.state, onStart])
   const handleStart = () => {
     if (podsReady) {
-      onStart()
+      onStart(podStates.LEFT_WRIST === 'real-connected')
       return
     }
     startRequested.current = true
     connectionRef.current?.connect()
   }
+  const readinessLabel = !podsReady
+    ? 'Pods 等待连接'
+    : podStates.LEFT_WRIST === 'real-connected' ? 'DAAANCE_LW 已连接' : 'Demo 已就绪'
 
   return <main className="home page-shell soft-glass-theme">
-    <nav><Logo /><div className="mock-badge"><span /> {podsReady ? '模拟设备已就绪' : 'Pods 等待连接'}</div></nav>
+    <nav><Logo /><div className="mock-badge"><span /> {readinessLabel}</div></nav>
     <section className="hero">
       <div className="hero-copy">
         <div className="eyebrow"><Waves size={15} /> 感受节拍 · 看见动作</div>
@@ -60,21 +78,29 @@ function Home({ onStart }: { onStart: () => void }) {
         <div className="principle"><span>训练原则</span><strong>没有反馈，就继续跳。</strong></div>
       </div>
       <div className="hero-stage" aria-label="四肢设备状态">
-        <div className="halo halo-one" /><div className="halo halo-two" />
-        <div className="dancer">
-          <div className="head" /><div className="torso" />
-          <div className="arm arm-left"><i /></div><div className="arm arm-right"><i /></div>
-          <div className="leg leg-left"><i /></div><div className="leg leg-right"><i /></div>
+        <div className="rhythm-field" aria-label="四个 Pod 节拍场">
+          <div className="rhythm-glow" aria-hidden="true" />
+          <div className="rhythm-orbit rhythm-orbit-outer" aria-hidden="true" />
+          <div className="rhythm-orbit rhythm-orbit-inner" aria-hidden="true" />
+          <div className="rhythm-ripples" aria-hidden="true"><i /><i /><i /></div>
+          <div className="rhythm-wave" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div>
+          <ul className="rhythm-nodes" aria-label="Pod 位置">
+            <li className="rhythm-node rhythm-node-lw"><span>LW</span></li>
+            <li className="rhythm-node rhythm-node-rw"><span>RW</span></li>
+            <li className="rhythm-node rhythm-node-la"><span>LA</span></li>
+            <li className="rhythm-node rhythm-node-ra"><span>RA</span></li>
+          </ul>
+          <div className="rhythm-core" aria-hidden="true"><span /><i /></div>
+          <PodConnectionPanel ref={connectionRef} controller={controller} variant="compact" onReady={handleReady} onStatesChange={setPodStates} />
         </div>
-        <PodConnectionPanel ref={connectionRef} variant="compact" onReady={handleReady} onStatesChange={setPodStates} />
       </div>
     </section>
     <div className="device-strip"><DeviceGrid podStates={podStates} /></div>
   </main>
 }
 
-function Setup({ feedbackMode, strictness, setFeedbackMode, setStrictness, onBack, onStart }: {
-  feedbackMode: TrainingMode; strictness: Strictness; setFeedbackMode: (m: TrainingMode) => void; setStrictness: (s: Strictness) => void; onBack: () => void; onStart: () => void
+function Setup({ controller, feedbackMode, strictness, setFeedbackMode, setStrictness, onBack, onStart }: {
+  controller: LeftWristHardwareController; feedbackMode: TrainingMode; strictness: Strictness; setFeedbackMode: (m: TrainingMode) => void; setStrictness: (s: Strictness) => void; onBack: () => void; onStart: () => void
 }) {
   return <main className="page-shell setup-page soft-glass-theme">
     <nav><Logo /><button className="text-button" onClick={onBack}><ArrowLeft size={17} /> 返回</button></nav>
@@ -98,6 +124,7 @@ function Setup({ feedbackMode, strictness, setFeedbackMode, setStrictness, onBac
         </button>)}
       </div>
       <div className="setup-note"><Activity size={18} /><span><strong>Mock IMU 已开启</strong>硬件未连接也可以完整体验动作检测。</span></div>
+      <HardwareTestPanel controller={controller} />
       <button className="primary full" onClick={onStart}>开始舞蹈 <CirclePlay size={20} /></button>
     </section>
   </main>
@@ -117,14 +144,82 @@ function Results({ results, onAgain, onHome }: { results: TimingResult[]; onAgai
   </main>
 }
 
-export default function App() {
+export interface AppProps {
+  hardwareClient?: LeftWristHardwareClient
+  bleSource?: BLEMotionDataSource
+}
+
+export default function App({ hardwareClient, bleSource: injectedBleSource }: AppProps = {}) {
+  const [client] = useState<LeftWristHardwareClient>(() => hardwareClient ?? new BluetoothPodClient())
+  const [bleSource] = useState(() => injectedBleSource ?? new BLEMotionDataSource())
+  const hardware = useLeftWristHardware(client, bleSource)
+  const [mockSource] = useState(() => new MockMotionDataSource())
+  // Hybrid is selected only after the real Pod countdown. A later disconnect
+  // changes connection status, not the session's left-wrist data provenance.
+  const [hybridSource] = useState(() => new HybridMotionDataSource(
+    bleSource,
+    mockSource,
+    () => true,
+  ))
   const [screen, setScreen] = useState<Screen>('home')
+  const [useRealHardware, setUseRealHardware] = useState(false)
+  const [trainingSource, setTrainingSource] = useState<MotionDataSource>(mockSource)
+  const [autoStart, setAutoStart] = useState(false)
   const [feedbackMode, setFeedbackMode] = useState<TrainingMode>('accessibility')
   const [strictness, setStrictness] = useState<Strictness>('standard')
   const [results, setResults] = useState<TimingResult[]>([])
+  const sendFeedbackError = useCallback((_eventId: string) => hardware.sendCommand('FEEDBACK_ERROR'), [hardware.sendCommand])
+  const ignoreFeedbackError = useCallback((_eventId: string) => {}, [])
 
-  if (screen === 'home') return <Home onStart={() => setScreen('setup')} />
-  if (screen === 'setup') return <Setup feedbackMode={feedbackMode} strictness={strictness} setFeedbackMode={setFeedbackMode} setStrictness={setStrictness} onBack={() => setScreen('home')} onStart={() => setScreen('training')} />
-  if (screen === 'training') return <Training feedbackMode={feedbackMode} strictness={strictness} onExit={() => setScreen('setup')} onFinish={value => { setResults(value); setScreen('results') }} />
-  return <Results results={results} onHome={() => setScreen('home')} onAgain={() => setScreen('training')} />
+  const startTraining = (source: MotionDataSource, shouldAutoStart: boolean) => {
+    setTrainingSource(source)
+    setAutoStart(shouldAutoStart)
+    setScreen('training')
+  }
+
+  const restartTraining = () => {
+    if (trainingSource.kind === 'hybrid') {
+      setScreen('countdown')
+      return
+    }
+    setAutoStart(false)
+    setScreen('training')
+  }
+
+  if (screen === 'home') return <Home controller={hardware} onStart={realHardware => { setUseRealHardware(realHardware); setScreen('setup') }} />
+  if (screen === 'setup') return <Setup controller={hardware} feedbackMode={feedbackMode} strictness={strictness} setFeedbackMode={setFeedbackMode} setStrictness={setStrictness} onBack={() => setScreen('home')} onStart={() => {
+    if (useRealHardware) setScreen('countdown')
+    else startTraining(mockSource, false)
+  }} />
+  if (screen === 'countdown') return <CountdownGate
+    connectionState={hardware.snapshot.state}
+    connect={hardware.connect}
+    sendCommand={hardware.sendCommand}
+    subscribeEvents={hardware.subscribeEvents}
+    onHardwareReady={receivedAt => {
+      bleSource.startSession(receivedAt)
+      startTraining(hybridSource, true)
+    }}
+    onStartDemo={() => startTraining(mockSource, false)}
+  />
+  if (screen === 'training') {
+    const leftWristStatus = trainingSource.kind !== 'hybrid'
+      ? 'demo'
+      : hardware.snapshot.state === 'connected'
+        ? 'connected'
+        : hardware.snapshot.state === 'error' || hardware.snapshot.state === 'unsupported'
+          ? 'error'
+          : 'disconnected'
+    return <Training
+      source={trainingSource}
+      autoStart={autoStart}
+      leftWristStatus={leftWristStatus}
+      feedbackMode={feedbackMode}
+      strictness={strictness}
+      onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : ignoreFeedbackError}
+      onExit={() => setScreen('setup')}
+      onFinish={value => { setResults(value); setScreen('results') }}
+    />
+  }
+  return <Results results={results} onHome={() => setScreen('home')} onAgain={restartTraining} />
 }

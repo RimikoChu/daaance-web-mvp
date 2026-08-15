@@ -11,7 +11,12 @@
 ## Global Constraints
 
 - Phase one supports exactly one real `left_wrist` Pod named `DAAANCE_LW`; `right_wrist`, `left_ankle`, and `right_ankle` remain Mock.
-- BLE UUIDs exist only in `src/hardware/ble/bleConfig.ts`; empty UUIDs produce `BLE protocol not configured` before opening a chooser.
+- Frozen device names are `DAAANCE_LW`, `DAAANCE_RW`, `DAAANCE_LA`, `DAAANCE_RA`, mapped to `left_wrist`, `right_wrist`, `left_ankle`, `right_ankle`.
+- UUIDs exist only in `src/hardware/ble/bleConfig.ts`: `SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"`, `POD_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"`, `POD_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"`.
+- RX/TX are always named from the Pod perspective: web writes raw UTF-8 to `POD_RX_UUID`, Pod notifies from `POD_TX_UUID`; ambiguous TX/RX names and STATUS UUID are prohibited.
+- Event names and JSON fields are case-sensitive with no aliases; HELLO uses `firmware`, never `fw`; mocks use the exact real-packet schema.
+- Production code must use real `navigator.bluetooth`; only tests may inject typed fake Bluetooth boundaries.
+- Web code must not contain or depend on XIAO GPIO/pin assignments.
 - Commands are UTF-8 strings: `VIBRATE_SHORT`, `VIBRATE_LONG`, `START_COUNTDOWN`, `FEEDBACK_ERROR`, `STOP_ALL`.
 - Malformed and unknown notifications never terminate later notification processing.
 - Every BLE IMU sample preserves hardware `t` and web receive time.
@@ -139,7 +144,7 @@ export class BluetoothPodClient {
 
 - [ ] **Step 1: Write failing configuration and support tests**
 
-Assert empty UUIDs reject with code `protocol-not-configured` without calling `requestDevice`. Assert missing `bluetooth` rejects with the exact Chrome/Edge guidance and snapshot state `unsupported`.
+Assert the exported canonical device-name map and all three UUID constants exactly match the frozen protocol. Assert missing `bluetooth` rejects with the exact Chrome/Edge guidance and snapshot state `unsupported`.
 
 - [ ] **Step 2: Run first RED**
 
@@ -162,11 +167,11 @@ Use typed fakes for device, GATT server, service, TX, and RX. Assert:
 ```ts
 expect(requestDevice).toHaveBeenCalledWith({
   filters: [{ name: 'DAAANCE_LW' }],
-  optionalServices: ['service-uuid'],
+  optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'],
 })
-expect(server.getPrimaryService).toHaveBeenCalledWith('service-uuid')
-expect(service.getCharacteristic).toHaveBeenCalledWith('tx-uuid')
-expect(service.getCharacteristic).toHaveBeenCalledWith('rx-uuid')
+expect(server.getPrimaryService).toHaveBeenCalledWith(SERVICE_UUID)
+expect(service.getCharacteristic).toHaveBeenCalledWith(POD_TX_UUID)
+expect(service.getCharacteristic).toHaveBeenCalledWith(POD_RX_UUID)
 ```
 
 Dispatch one malformed notification then one valid IMU notification and assert the subscriber receives the valid event.
@@ -304,7 +309,7 @@ Expected: lifecycle and telemetry tests pass.
 
 - [ ] **Step 5: Replace Pod tests with one-real-plus-three-Mock RED cases**
 
-Assert the UI initially shows left wrist `Real hardware / Not connected` and the other three `Demo`. Assert protocol-not-configured, unsupported, cancellation, and discovery failure never render `Connected`. Assert successful client state renders device name, `Connected`, and measured Hz.
+Assert the UI initially shows left wrist `Real hardware / Not connected` and the other three `Demo`. Assert unsupported, cancellation, and discovery failure never render `Connected`. Assert successful client state renders device name, `Connected`, and measured Hz.
 
 - [ ] **Step 6: Run Pod RED**
 
@@ -353,7 +358,7 @@ Expected: FAIL because the component does not exist.
 
 - [ ] **Step 3: Implement diagnostic rendering**
 
-Use semantic sections and a definition list; format IMU values to two decimals and Hz to one decimal. Render the exact unsupported and protocol-not-configured messages from controller state.
+Use semantic sections and a definition list; format IMU values to two decimals and Hz to one decimal. Render the exact unsupported-browser message from controller state.
 
 - [ ] **Step 4: Write failing command mapping tests**
 
@@ -544,8 +549,8 @@ Expected: TypeScript and Vite succeed; output includes `demo-dance-*.mp4` and `s
 
 Run: `npm run dev -- --host 127.0.0.1` and inspect in Chrome/Edge:
 
-- UUIDs empty → `BLE protocol not configured` and no chooser.
-- With UUIDs populated → chooser filters exact `DAAANCE_LW`.
+- Chooser filters exact `DAAANCE_LW` and requests `SERVICE_UUID`.
+- Notifications come from `POD_TX_UUID`; raw command writes go to `POD_RX_UUID`.
 - Successful connection → left wrist Real/Connected and three Demo Pods.
 - Hardware Test values update; Hz trends toward 50.
 - Short vibration button sends the exact command.
@@ -558,10 +563,10 @@ Run:
 ```bash
 git diff --check
 git status --short
-rg -n "serviceUuid|txCharacteristicUuid|rxCharacteristicUuid" src
+rg -n "SERVICE_UUID|POD_RX_UUID|POD_TX_UUID|TX_UUID|RX_UUID|STATUS_UUID" src
 ```
 
-Expected: no whitespace errors; UUID values are defined only in `bleConfig.ts` and referenced through the config object elsewhere.
+Expected: no whitespace errors; canonical UUID values are defined only in `bleConfig.ts`; only the Pod-perspective constant names appear; no STATUS UUID exists.
 
 - [ ] **Step 7: Commit integration fixes**
 
@@ -573,3 +578,66 @@ git commit -m "test: verify left wrist BLE closed loop"
 - [ ] **Step 8: Prepare the completion report**
 
 Report changed/new files, exact UUID location, connect and Hardware Test locations, measured-Hz interpretation, Short vibration procedure, automatic error-feedback procedure, confirmation of three Mock Pods, full test count, and final build output. Do not claim physical vibration was verified unless a configured real device was actually connected during the run.
+
+---
+
+### Task 9: Homepage Typography and Abstract Wearable-Tech Refinement
+
+**Files:**
+- Modify: `src/App.tsx` (presentational homepage markup only)
+- Modify: `src/App.test.tsx` (homepage presentation assertions only)
+- Modify: `src/styles.css`
+
+**Interfaces:**
+- Consumes the existing Pod state and connection action without changing their types or behavior.
+- Produces a responsive abstract rhythm field with four non-human Pod nodes and no human-shaped Hero markup.
+
+- [ ] **Step 1: Write failing homepage presentation tests**
+
+Render the homepage and assert `.dancer`, `.head`, `.torso`, `.arm`, `.leg`, human SVG/illustration labels, and human-shaped visualization markup are absent. Assert `.rhythm-field` exists with exactly four abstract nodes labeled `LW`, `RW`, `LA`, and `RA`, while the existing Pod connection action and four status cards remain available.
+
+- [ ] **Step 2: Run RED**
+
+Run: `npm test -- src/App.test.tsx`
+
+Expected: FAIL because the current Hero still renders `.dancer` and has no rhythm field.
+
+- [ ] **Step 3: Replace only the homepage illustration markup**
+
+Keep all copy and hardware callbacks intact. Replace the human-shaped div tree with lightweight presentational rings, orbit lines, waveform/ripple elements, and four abstract Pod nodes. Integrate the existing compact connection widget within this visual without moving BLE logic into the presentation.
+
+- [ ] **Step 4: Implement typography and layout refinements**
+
+Use the exact stack `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Inter", sans-serif`. Set the desktop Hero headline near `clamp(56px, 5.2vw, 76px)`, weight 750, line-height .98, letter-spacing -.04em; keep the first line dark and the second orange. Refine content width, spacing, compact CTA, navigation weight, translucent glass surfaces, and four product-like Pod cards with coral, lavender, cyan, and blue/lime accents.
+
+- [ ] **Step 5: Add restrained motion and reduced-motion behavior**
+
+Add slow ring pulse/node breathing only to the abstract visualization. Under `@media (prefers-reduced-motion: reduce)`, disable those animations and nonessential transitions.
+
+- [ ] **Step 6: Run GREEN and hardware regression tests**
+
+Run: `npm test -- src/App.test.tsx src/components/PodConnectionPanel.test.tsx src/hardware/HardwareTestPanel.test.tsx`
+
+Expected: homepage presentation and hardware UI behavior tests pass.
+
+- [ ] **Step 7: Verify desktop/laptop layout in the local browser**
+
+Inspect at 1440×900 and 1280×800. Confirm no human figure/silhouette, no clipping, balanced two-column layout, connection widget integrated with the rhythm field, readable Chinese typography, and functional Pod controls.
+
+- [ ] **Step 8: Run production build and scope audit**
+
+Run:
+
+```bash
+npm run build
+git diff --name-only <task-base>..HEAD
+```
+
+Expected: build passes; the task diff contains only `src/App.tsx`, `src/App.test.tsx`, and `src/styles.css`; BLE protocol, clients, data sources, Hardware Test behavior, countdown, training state, and commands are untouched.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/App.tsx src/App.test.tsx src/styles.css
+git commit -m "feat: refine Daaance wearable-tech homepage"
+```

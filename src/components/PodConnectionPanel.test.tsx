@@ -1,135 +1,132 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { LeftWristHardwareController, LeftWristHardwareSnapshot } from '../hardware/useLeftWristHardware'
 import { PodConnectionPanel } from './PodConnectionPanel'
 
-type PodDevice = {
-  id: string
-  gatt?: { connect: () => Promise<unknown> }
+function controller(snapshot: LeftWristHardwareSnapshot): LeftWristHardwareController {
+  return {
+    snapshot,
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+    sendCommand: vi.fn(async () => {}),
+    subscribeEvents: vi.fn(() => vi.fn()),
+    recentEvents: [],
+  }
 }
 
-function installBluetooth(requestDevice: () => Promise<PodDevice>) {
-  Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: { requestDevice } })
-}
-
-function device(id: string, connect: () => Promise<unknown> = () => Promise.resolve({})) {
-  return { id, gatt: { connect } }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>(value => { resolve = value })
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>(resolvePromise => {
+    resolve = resolvePromise
+  })
   return { promise, resolve }
 }
 
-function terminalCount() {
-  return screen.queryAllByText('硬件 · 已连接').length + screen.queryAllByText('Demo · 50Hz').length
-}
-
-afterEach(() => {
-  Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: undefined })
-  vi.restoreAllMocks()
-})
-
 describe('PodConnectionPanel', () => {
-  it('renders a compact status action and reports every state transition', async () => {
-    const onStatesChange = vi.fn()
-    render(<PodConnectionPanel variant="compact" onReady={vi.fn()} onStatesChange={onStatesChange} />)
+  it('shows one disconnected real left wrist and three explicit Demo Pods', () => {
+    render(<PodConnectionPanel controller={controller({ state: 'disconnected', imuHz: 0 })} onReady={vi.fn()} />)
 
-    expect(document.querySelector('.pod-connection-panel')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
-
-    await waitFor(() => expect(screen.getByText('4 / 4')).toBeInTheDocument())
-    expect(onStatesChange).toHaveBeenCalledWith(expect.objectContaining({
-      LEFT_WRIST: 'demo',
-      RIGHT_WRIST: 'demo',
-      LEFT_ANKLE: 'demo',
-      RIGHT_ANKLE: 'demo',
-    }))
+    expect(screen.getByText('Real hardware')).toBeInTheDocument()
+    expect(screen.getByText('Not connected')).toBeInTheDocument()
+    expect(screen.getAllByText('Demo')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Connect DAAANCE_LW' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue in Demo' })).toBeInTheDocument()
   })
 
-  it('connects all four Pods together and falls back to Demo 50Hz', async () => {
-    render(<PodConnectionPanel onReady={vi.fn()} />)
+  it.each([
+    { state: 'unsupported', error: { code: 'unsupported', message: 'Web Bluetooth is not supported in this browser. Please use Chrome or Edge.' } } as const,
+    { state: 'error', error: { code: 'connection-failed', message: 'Bluetooth chooser was cancelled' } } as const,
+    { state: 'error', error: { code: 'connection-failed', message: 'Service discovery failed' } } as const,
+  ])('never labels $state real BLE failures as Connected', snapshot => {
+    render(<PodConnectionPanel controller={controller({ ...snapshot, imuHz: 0 })} onReady={vi.fn()} />)
 
-    expect(screen.getAllByText('未连接')).toHaveLength(4)
-
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
-
-    expect(screen.getAllByText('连接中…')).toHaveLength(4)
-    expect(await screen.findAllByText('Demo · 50Hz')).toHaveLength(4)
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
+    expect(screen.getByText(snapshot.error.message)).toBeInTheDocument()
   })
 
-  it('updates each Pod as its sequential chooser and GATT connection settle', async () => {
-    const firstGatt = deferred<unknown>()
-    const secondChooser = deferred<PodDevice>()
-    const requestDevice = vi.fn()
-      .mockResolvedValueOnce(device('left-wrist', () => firstGatt.promise))
-      .mockImplementationOnce(() => secondChooser.promise)
-    installBluetooth(requestDevice)
+  it('shows the connected device name and measured IMU rate only after real success', () => {
+    render(<PodConnectionPanel controller={controller({
+      state: 'connected',
+      deviceName: 'DAAANCE_LW',
+      imuHz: 49.8,
+    })} onReady={vi.fn()} />)
 
-    render(<PodConnectionPanel onReady={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
-
-    expect(screen.getAllByText('连接中…')).toHaveLength(4)
-    expect(requestDevice).toHaveBeenCalledOnce()
-
-    firstGatt.resolve({})
-    await waitFor(() => expect(screen.getAllByText('硬件 · 已连接')).toHaveLength(1))
-    expect(screen.getAllByText('连接中…')).toHaveLength(3)
-    expect(requestDevice).toHaveBeenCalledTimes(2)
-    expect(requestDevice).toHaveBeenNthCalledWith(1, { filters: [{ namePrefix: 'Daaance Pod' }] })
+    expect(screen.getByText('Real hardware')).toBeInTheDocument()
+    expect(screen.getByText('DAAANCE_LW')).toBeInTheDocument()
+    expect(screen.getByText('Connected')).toBeInTheDocument()
+    expect(screen.getByText('49.8 Hz')).toBeInTheDocument()
+    expect(screen.getAllByText('Demo')).toHaveLength(3)
   })
 
-  it('uses hardware only after GATT succeeds and settles failures to demo independently', async () => {
-    const requestDevice = vi.fn()
-      .mockResolvedValueOnce(device('left-wrist'))
-      .mockResolvedValueOnce({ id: 'right-wrist' })
-      .mockResolvedValueOnce(device('left-ankle', () => Promise.reject(new Error('GATT failed'))))
-      .mockResolvedValueOnce(device('right-ankle'))
-    installBluetooth(requestDevice)
-
-    render(<PodConnectionPanel onReady={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
-
-    await waitFor(() => expect(terminalCount()).toBe(4))
-    expect(screen.getAllByText('硬件 · 已连接')).toHaveLength(2)
-    expect(screen.getAllByText('Demo · 50Hz')).toHaveLength(2)
-  })
-
-  it('does not allow a selected device ID to satisfy more than one Pod', async () => {
-    const requestDevice = vi.fn(() => Promise.resolve(device('same-pod')))
-    installBluetooth(requestDevice)
-
-    render(<PodConnectionPanel onReady={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
-
-    await waitFor(() => expect(terminalCount()).toBe(4))
-    expect(screen.getAllByText('硬件 · 已连接')).toHaveLength(1)
-    expect(screen.getAllByText('Demo · 50Hz')).toHaveLength(3)
-  })
-
-  it('notifies the home flow only after every Pod reaches a terminal state', async () => {
+  it('uses controller connect and makes Demo continuation an explicit separate action', async () => {
+    const hardware = controller({ state: 'disconnected', imuHz: 0 })
     const onReady = vi.fn()
-    const gattConnections = [deferred<unknown>(), deferred<unknown>(), deferred<unknown>(), deferred<unknown>()]
-    let requestIndex = 0
-    const requestDevice = vi.fn(() => {
-      const index = requestIndex++
-      return Promise.resolve(device(`pod-${index}`, () => gattConnections[index].promise))
-    })
-    installBluetooth(requestDevice)
+    render(<PodConnectionPanel controller={hardware} onReady={onReady} />)
 
-    render(<PodConnectionPanel onReady={onReady} />)
-    fireEvent.click(screen.getByRole('button', { name: '连接 4 个 Pods' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect DAAANCE_LW' }))
+    expect(hardware.connect).toHaveBeenCalledOnce()
+    expect(onReady).not.toHaveBeenCalled()
 
-    for (let index = 0; index < 3; index += 1) {
-      await waitFor(() => expect(requestDevice).toHaveBeenCalledTimes(index + 1))
-      gattConnections[index].resolve({})
-      await waitFor(() => expect(terminalCount()).toBe(index + 1))
-      expect(onReady).not.toHaveBeenCalled()
-    }
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in Demo' }))
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce())
+  })
 
-    await waitFor(() => expect(requestDevice).toHaveBeenCalledTimes(4))
-    gattConnections[3].resolve({})
-    await waitFor(() => expect(terminalCount()).toBe(4))
-    expect(onReady).toHaveBeenCalledOnce()
+  it('shows the intentional Demo selection in the compact status card', async () => {
+    render(<PodConnectionPanel
+      controller={controller({ state: 'error', error: { code: 'connection-failed', message: 'Cancelled' }, imuHz: 0 })}
+      onReady={vi.fn()}
+      variant="compact"
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in Demo' }))
+
+    expect(await screen.findByText('Demo mode')).toBeInTheDocument()
+    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument()
+  })
+
+  it('terminates an active connection attempt before continuing in Demo', async () => {
+    const termination = deferred()
+    const hardware = controller({ state: 'connecting', imuHz: 0 })
+    hardware.disconnect = vi.fn(() => termination.promise)
+    const onReady = vi.fn()
+    render(<PodConnectionPanel controller={hardware} onReady={onReady} variant="compact" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in Demo' }))
+
+    expect(hardware.disconnect).toHaveBeenCalledOnce()
+    expect(onReady).not.toHaveBeenCalled()
+    expect(screen.queryByText('Demo mode')).not.toBeInTheDocument()
+
+    termination.resolve()
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce())
+    expect(screen.getByText('Demo mode')).toBeInTheDocument()
+  })
+
+  it('reports readiness again after a disconnect and successful reconnect', async () => {
+    const onReady = vi.fn()
+    const connected = controller({ state: 'connected', deviceName: 'DAAANCE_LW', imuHz: 0 })
+    const view = render(<PodConnectionPanel controller={connected} onReady={onReady} />)
+    await waitFor(() => expect(onReady).toHaveBeenCalledOnce())
+
+    view.rerender(<PodConnectionPanel controller={controller({ state: 'disconnected', imuHz: 0 })} onReady={onReady} />)
+    view.rerender(<PodConnectionPanel controller={connected} onReady={onReady} />)
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(2))
+  })
+
+  it('ignores Demo termination that completes after unmount', async () => {
+    const termination = deferred()
+    const hardware = controller({ state: 'connecting', imuHz: 0 })
+    hardware.disconnect = vi.fn(() => termination.promise)
+    const onReady = vi.fn()
+    const view = render(<PodConnectionPanel controller={hardware} onReady={onReady} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue in Demo' }))
+    view.unmount()
+    termination.resolve()
+    await termination.promise
+    await Promise.resolve()
+
+    expect(onReady).not.toHaveBeenCalled()
   })
 })

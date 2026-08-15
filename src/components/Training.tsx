@@ -1,27 +1,51 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Bluetooth, CirclePlay, Pause, Volume2, Waves } from 'lucide-react'
 import demoDance from '../assets/demo-dance.mp4'
 import { CHOREOGRAPHY, LIMB_LABEL, TOLERANCE } from '../domain/choreography'
-import { MockMotionDataSource } from '../domain/mockMotionDataSource'
 import { analyzeTiming } from '../domain/motion'
-import type { Limb, Strictness, TimingResult, TrainingMode } from '../domain/types'
+import type { ChoreographyEvent, Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from '../domain/types'
 import { DANCE_DURATION_SECONDS, getSegmentBounds, getTeachingSegment, seekBy } from '../playback'
+import { createFeedbackGuard } from '../trainingFeedback'
 
 type LearningMode = 'teaching' | 'follow'
+type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
 
 export interface TrainingProps {
   feedbackMode: TrainingMode
   strictness: Strictness
   onFinish: (results: TimingResult[]) => void
   onExit: () => void
+  source: MotionDataSource
+  autoStart?: boolean
+  leftWristStatus?: LeftWristTrainingStatus
+  onFeedbackError?: (eventId: string) => Promise<void> | void
 }
 
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
 const SEGMENT_LABELS = ['第一段', '第二段', '第三段']
+const ANALYSIS_DELAY_MS = 500
+const FEEDBACK_COOLDOWN_MS = 1_000
+const LEFT_WRIST_STATUS_LABEL: Record<LeftWristTrainingStatus, string> = {
+  demo: 'Demo',
+  connected: 'Real hardware · Connected',
+  disconnected: 'Real hardware · Disconnected',
+  error: 'Real hardware · Error',
+}
 
-export function Training({ feedbackMode, strictness, onFinish, onExit }: TrainingProps) {
+export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
+  const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
+  const onFeedbackErrorRef = useRef(onFeedbackError)
+  onFeedbackErrorRef.current = onFeedbackError
+  const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
+  if (!feedbackGuardRef.current) {
+    feedbackGuardRef.current = createFeedbackGuard({
+      cooldownMs: FEEDBACK_COOLDOWN_MS,
+      now: Date.now,
+      send: eventId => onFeedbackErrorRef.current?.(eventId),
+    })
+  }
   const [learningMode, setLearningMode] = useState<LearningMode>('teaching')
   const [activeSegment, setActiveSegment] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -29,9 +53,26 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
   const [playing, setPlaying] = useState(false)
   const [mediaAvailable, setMediaAvailable] = useState(true)
   const [message, setMessage] = useState('视频已就绪，点击播放开始教学。')
-  const source = useMemo(() => new MockMotionDataSource(), [])
   const logicalTime = currentTime * 1000
   const nextEvent = CHOREOGRAPHY.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
+
+  const analyzeEvent = (event: ChoreographyEvent): TimingResult => {
+    const existing = resultsByEventIdRef.current.get(event.id)
+    if (existing) return existing
+
+    const result = analyzeTiming(event, source.getSamples(event), TOLERANCE[strictness])
+    resultsByEventIdRef.current.set(event.id, result)
+    if (event.limb === 'LEFT_WRIST' && result.status !== 'correct') {
+      void feedbackGuardRef.current?.report(event.id)
+    }
+    return result
+  }
+
+  const analyzeThrough = (timeMs: number) => {
+    for (const event of CHOREOGRAPHY) {
+      if (event.time + ANALYSIS_DELAY_MS <= timeMs) analyzeEvent(event)
+    }
+  }
 
   const seek = (delta: number) => {
     const video = videoRef.current
@@ -72,6 +113,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
     if (!video) return
     const time = video.currentTime
     setCurrentTime(time)
+    analyzeThrough(time * 1000)
     if (learningMode === 'teaching') {
       const bounds = getSegmentBounds(activeSegment, duration)
       if (time >= bounds.end) {
@@ -87,7 +129,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
     if (finishedRef.current) return
     finishedRef.current = true
     setPlaying(false)
-    onFinish(CHOREOGRAPHY.map(event => analyzeTiming(event, source.getSamples(event), TOLERANCE[strictness])))
+    onFinish(CHOREOGRAPHY.map(analyzeEvent))
   }
 
   return <main className="training-page soft-glass-theme">
@@ -99,7 +141,14 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
     <div className="training-layout">
       <aside>
         <div className="aside-title"><Bluetooth size={16} /> Pod 状态</div>
-        <div className="device-grid">{LIMBS.map(limb => <div className={`device-chip ${nextEvent?.limb === limb ? 'active' : ''}`} key={limb}><span className="device-dot" /><span>{LIMB_LABEL[limb]}</span><small>{nextEvent?.limb === limb ? '动作中' : '已连接'}</small></div>)}</div>
+        <div className="device-grid">{LIMBS.map(limb => {
+          const sourceLabel = limb === 'LEFT_WRIST' ? LEFT_WRIST_STATUS_LABEL[leftWristStatus] : 'Demo'
+          return <div className={`device-chip ${nextEvent?.limb === limb ? 'active' : ''}`} key={limb}>
+            <span className="device-dot" />
+            <span>{LIMB_LABEL[limb]}</span>
+            <small><span>{sourceLabel}</span>{nextEvent?.limb === limb && <span> · 动作中</span>}</small>
+          </div>
+        })}</div>
         <div className="quiet-card"><Waves size={18} /><span><strong>安静反馈</strong>没有提示时，请继续跳。</span></div>
       </aside>
       <section className="dance-view">
@@ -111,6 +160,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
         <div className="teacher-stage video-stage">
           <div className="beat-grid" />
           <video
+            className="video-stage-media"
             ref={videoRef}
             aria-label="18.66 秒舞蹈示范"
             src={demoDance}
@@ -127,6 +177,10 @@ export function Training({ feedbackMode, strictness, onFinish, onExit }: Trainin
               setMediaAvailable(true)
               setDuration(mediaDuration)
               setMessage('视频已就绪，点击播放开始教学。')
+              if (autoStart) void event.currentTarget.play().catch(() => {
+                setPlaying(false)
+                setMessage('视频未能播放，请点击播放按钮重试。')
+              })
             }}
             onPlay={() => { setPlaying(true); setMessage(learningMode === 'teaching' ? `${SEGMENT_LABELS[activeSegment]}教学播放中。` : '跟跳播放中。') }}
             onPause={() => setPlaying(false)}
