@@ -1069,7 +1069,7 @@ h1 em {
 /* Studio is isolated from the existing demo by the studio-* namespace. */
 .studio-page { min-height: 100vh; padding: 28px; color: #f2f4ee; background: radial-gradient(circle at 20% 0, #273124 0, #111511 34%, #080a08 75%); }
 .studio-header { max-width: 1380px; margin: 0 auto 24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
-.studio-header h1 { margin: 4px 0; font-size: clamp(30px, 4vw, 52px); letter-spacing: -.04em; }.studio-header p { margin: 0; color: #969d92; }.studio-kicker { color: #d8ff3e; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.studio-header h1 { margin: 4px 0; color: #f2f4ee; font-size: clamp(30px, 4vw, 52px); letter-spacing: -.04em; }.studio-header p { margin: 0; color: #969d92; }.studio-kicker { color: #d8ff3e; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
 .studio-actions { display: flex; gap: 10px; }.studio-actions button { display: inline-flex; align-items: center; gap: 7px; }
 .studio-layout { width: min(1380px, 100%); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); gap: 18px; }
 .studio-preview, .studio-beats { border: 1px solid #ffffff14; border-radius: 22px; background: #11150fdd; box-shadow: 0 24px 70px #0007; }
