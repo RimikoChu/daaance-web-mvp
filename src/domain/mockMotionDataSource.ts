@@ -26,7 +26,7 @@ export class MockMotionDataSource implements MotionDataSource {
       return timestamp >= startMs && timestamp <= endMs ? [this.focusPeakSample(event, timestamp)] : []
     }))
 
-    return samples
+    return samples.sort((first, second) => first.timestamp - second.timestamp)
   }
 
   getSamples(event: ChoreographyEvent): IMUSample[] {

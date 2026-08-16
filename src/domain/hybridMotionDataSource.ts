@@ -16,6 +16,7 @@ export class HybridMotionDataSource implements MotionDataSource {
   getSamplesForWindow(startMs: number, endMs: number): IMUSample[] {
     const mockSamples = this.mock.getSamplesForWindow(startMs, endMs)
     const leftWrist = this.ble.getSamplesForWindow(startMs, endMs)
+      .filter(sample => sample.limb === 'LEFT_WRIST')
     const otherLimbs = mockSamples.filter(sample => sample.limb !== 'LEFT_WRIST')
     return [...leftWrist, ...otherLimbs]
   }

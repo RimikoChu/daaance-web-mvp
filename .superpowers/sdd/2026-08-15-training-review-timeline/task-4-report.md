@@ -40,3 +40,22 @@ keeping all limbs continuously sampled.
 
 The pre-existing modifications to the training-review plan and design spec were
 left uncommitted and excluded from the Task 4 commit.
+
+## Review round 1
+
+Two P2 findings were reproduced with RED tests and fixed:
+
+- Hybrid now filters windowed BLE output to `LEFT_WRIST` defensively before it
+  is combined with the three Mock limbs. An adversarial BLE test injects a
+  right-wrist hardware sample and proves it is excluded; an empty BLE window
+  test proves no Mock left wrist appears.
+- Mock now sorts its merged baseline and choreography-focus samples by timestamp
+  before returning a window. A window containing the `c1` focus peak verifies
+  chronological order (`1900`, `1910`, `1920`).
+
+### Verification
+
+- Focused source and motion suite: 4 files, 36 tests passed.
+- Full suite: 18 files, 171 tests passed.
+- `npm run build`: `tsc -b && vite build` exited successfully.
+- `git diff --check`: passed.

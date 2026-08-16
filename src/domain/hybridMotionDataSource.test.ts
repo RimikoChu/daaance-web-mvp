@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BLEMotionDataSource } from './bleMotionDataSource'
 import { HybridMotionDataSource } from './hybridMotionDataSource'
 import { MockMotionDataSource } from './mockMotionDataSource'
-import type { ChoreographyEvent } from './types'
+import type { ChoreographyEvent, MotionDataSource } from './types'
 
 const leftWristEvent: ChoreographyEvent = {
   id: 'c1',
@@ -31,6 +31,42 @@ function realBleWithSample(): BLEMotionDataSource {
 }
 
 describe('HybridMotionDataSource', () => {
+  it('filters adversarial non-left BLE samples from a hybrid playback window', () => {
+    const ble: MotionDataSource = {
+      kind: 'ble',
+      async connect() {},
+      async disconnect() {},
+      getSamplesForWindow: () => [
+        { timestamp: 1000, hardwareTimestamp: 9876, receivedAt: 11_000, limb: 'LEFT_WRIST', ax: 8, ay: 0, az: 1, gx: 0, gy: 0, gz: 0 },
+        { timestamp: 1000, hardwareTimestamp: 9999, receivedAt: 11_000, limb: 'RIGHT_WRIST', ax: 9, ay: 0, az: 1, gx: 0, gy: 0, gz: 0 },
+      ],
+      getSamples: () => [],
+    }
+    const source = new HybridMotionDataSource(ble, new MockMotionDataSource())
+
+    const hardwareSamples = source.getSamplesForWindow(1000, 1000)
+      .filter(sample => sample.hardwareTimestamp !== undefined)
+
+    expect(hardwareSamples).toEqual([
+      expect.objectContaining({ limb: 'LEFT_WRIST', hardwareTimestamp: 9876, receivedAt: 11_000 }),
+    ])
+  })
+
+  it('does not substitute a Mock left wrist when the BLE window is empty', () => {
+    const ble: MotionDataSource = {
+      kind: 'ble',
+      async connect() {},
+      async disconnect() {},
+      getSamplesForWindow: () => [],
+      getSamples: () => [],
+    }
+    const source = new HybridMotionDataSource(ble, new MockMotionDataSource())
+
+    const limbs = [...new Set(source.getSamplesForWindow(1000, 1040).map(sample => sample.limb))]
+
+    expect(limbs).toEqual(['RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE'])
+  })
+
   it('streams real buffered left-wrist samples and Mock samples for exactly the other three limbs', () => {
     const ble = realBleWithSample()
     ble.addEvent({

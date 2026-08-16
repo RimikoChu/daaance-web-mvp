@@ -29,6 +29,16 @@ describe('MockMotionDataSource', () => {
     ])
   })
 
+  it('returns a chronological playback window when it includes a choreography focus peak', () => {
+    const samples = new MockMotionDataSource().getSamplesForWindow(1900, 1920)
+
+    expect(samples.map(sample => sample.timestamp)).toEqual([
+      1900, 1900, 1900, 1900,
+      1910,
+      1920, 1920, 1920, 1920,
+    ])
+  })
+
   it.each([
     ['c1', 1910],
     ['c2', 3320],
