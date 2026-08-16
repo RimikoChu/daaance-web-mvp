@@ -308,6 +308,32 @@ describe('Daaance training flow', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
   }
 
+  it('opens the complete Demo flow without requiring Bluetooth or Demo preselection', () => {
+    const client = new FakeHardwareClient()
+    client.snapshot = { state: 'disconnected' }
+    render(<App hardwareClient={client} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+    expect(screen.getByText('选择你的训练方式')).toBeInTheDocument()
+    expect(client.connect).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+    expect(screen.getByLabelText('18.66 秒舞蹈示范')).toBeInTheDocument()
+    expect(client.sendCommand).not.toHaveBeenCalledWith('START_COUNTDOWN')
+  })
+
+  it('lets a connected Pod user explicitly run the complete four-Mock Demo', () => {
+    const client = new FakeHardwareClient()
+    render(<App hardwareClient={client} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+    fireEvent.click(screen.getByRole('button', { name: /^完整 Demo · 4 个 Mock Pods/ }))
+    fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+
+    expect(screen.getByLabelText('18.66 秒舞蹈示范')).toBeInTheDocument()
+    expect(client.sendCommand).not.toHaveBeenCalledWith('START_COUNTDOWN')
+  })
+
   it('moves from home to setup after Demo is explicitly selected', async () => {
     render(<App />)
     await continueFromHome()

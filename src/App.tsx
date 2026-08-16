@@ -60,18 +60,8 @@ function Home({ controller, onStart }: { controller: LeftWristHardwareController
   const [podStates, setPodStates] = useState<PodStates>(() => ({ ...initialPodStates }))
   const podsReady = podStates.LEFT_WRIST === 'real-connected' || podStates.LEFT_WRIST === 'demo'
   const connectionRef = useRef<PodConnectionHandle>(null)
-  const startRequested = useRef(false)
-  const handleReady = useCallback(() => {
-    if (startRequested.current) onStart(controller.snapshot.state === 'connected')
-  }, [controller.snapshot.state, onStart])
-  const handleStart = () => {
-    if (podsReady) {
-      onStart(podStates.LEFT_WRIST === 'real-connected')
-      return
-    }
-    startRequested.current = true
-    connectionRef.current?.connect()
-  }
+  const handleReady = useCallback(() => {}, [])
+  const handleStart = () => onStart(podStates.LEFT_WRIST === 'real-connected')
   const readinessLabel = !podsReady
     ? 'Pods 等待连接'
     : podStates.LEFT_WRIST === 'real-connected' ? 'DAAANCE_LW 已连接' : 'Demo 已就绪'
@@ -108,15 +98,25 @@ function Home({ controller, onStart }: { controller: LeftWristHardwareController
   </main>
 }
 
-function Setup({ controller, feedbackMode, strictness, setFeedbackMode, setStrictness, onBack, onStart }: {
-  controller: LeftWristHardwareController; feedbackMode: TrainingMode; strictness: Strictness; setFeedbackMode: (m: TrainingMode) => void; setStrictness: (s: Strictness) => void; onBack: () => void; onStart: () => void
+function Setup({ controller, useRealHardware, feedbackMode, strictness, setUseRealHardware, setFeedbackMode, setStrictness, onBack, onStart }: {
+  controller: LeftWristHardwareController; useRealHardware: boolean; feedbackMode: TrainingMode; strictness: Strictness; setUseRealHardware: (value: boolean) => void; setFeedbackMode: (m: TrainingMode) => void; setStrictness: (s: Strictness) => void; onBack: () => void; onStart: () => void
 }) {
+  const hardwareConnected = controller.snapshot.state === 'connected'
   return <main className="page-shell setup-page soft-glass-theme">
     <nav><Logo /><button className="text-button" onClick={onBack}><ArrowLeft size={17} /> 返回</button></nav>
     <section className="setup-card">
       <div className="step-label">训练设置 · 约 20 秒</div>
       <h2>选择你的训练方式</h2>
-      <p>随时可以重新开始。本次体验将使用模拟动作数据。</p>
+      <p>随时可以重新开始。真实 Pod 与完整 Demo 可以独立选择。</p>
+      <h3>数据来源</h3>
+      <div className="choice-grid" role="group" aria-label="训练数据来源">
+        <button className={`choice ${!useRealHardware ? 'selected' : ''}`} onClick={() => setUseRealHardware(false)}>
+          <div className="choice-icon"><Sparkles /></div><span><strong>完整 Demo · 4 个 Mock Pods</strong><small>无需连接硬件，直接体验完整视频与报告</small></span>{!useRealHardware && <Check />}
+        </button>
+        <button className={`choice ${useRealHardware ? 'selected' : ''}`} disabled={!hardwareConnected} onClick={() => setUseRealHardware(true)}>
+          <div className="choice-icon"><Activity /></div><span><strong>Hybrid · 真实左腕 + 3 个 Demo Pods</strong><small>{hardwareConnected ? '使用已连接的 DAAANCE_LW' : '请先在首页连接 DAAANCE_LW'}</small></span>{useRealHardware && <Check />}
+        </button>
+      </div>
       <h3>训练模式</h3>
       <div className="choice-grid">
         <button className={`choice ${feedbackMode === 'accessibility' ? 'selected' : ''}`} onClick={() => setFeedbackMode('accessibility')}>
@@ -132,7 +132,7 @@ function Setup({ controller, feedbackMode, strictness, setFeedbackMode, setStric
           <strong>{['初学', '标准', '进阶'][index]}</strong><small>{['先跟下来', '平衡节奏', '精修卡点'][index]}</small>
         </button>)}
       </div>
-      <div className="setup-note"><Activity size={18} /><span><strong>Mock IMU 已开启</strong>硬件未连接也可以完整体验动作检测。</span></div>
+      <div className="setup-note"><Activity size={18} /><span><strong>{useRealHardware ? 'Hybrid 模式' : 'Mock IMU 已开启'}</strong>{useRealHardware ? '真实左腕与三个 Demo Pod 将进入同一训练流程。' : '四个 Mock Pod 将完整展示视频、动作检测和复盘报告。'}</span></div>
       {import.meta.env.DEV && <HardwareTestPanel controller={controller} />}
       <button className="primary full" onClick={onStart}>开始舞蹈 <CirclePlay size={20} /></button>
     </section>
@@ -227,7 +227,7 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   }
 
   if (screen === 'home') return <Home controller={hardware} onStart={realHardware => { setUseRealHardware(realHardware); setScreen('setup') }} />
-  if (screen === 'setup') return <Setup controller={hardware} feedbackMode={feedbackMode} strictness={strictness} setFeedbackMode={setFeedbackMode} setStrictness={setStrictness} onBack={() => setScreen('home')} onStart={() => {
+  if (screen === 'setup') return <Setup controller={hardware} useRealHardware={useRealHardware} feedbackMode={feedbackMode} strictness={strictness} setUseRealHardware={setUseRealHardware} setFeedbackMode={setFeedbackMode} setStrictness={setStrictness} onBack={() => setScreen('home')} onStart={() => {
     if (useRealHardware) setScreen('countdown')
     else startTraining(mockSource, false)
   }} />
