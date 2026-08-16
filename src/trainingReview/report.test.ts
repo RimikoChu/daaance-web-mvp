@@ -55,4 +55,20 @@ describe('buildTrainingReport', () => {
       label: 'Execution acknowledged',
     })
   })
+
+  it('counts overlapping review ranges from different limbs separately', () => {
+    const report = buildTrainingReport({
+      ...snapshot,
+      errors: [
+        ...snapshot.errors,
+        { id: 'right-demo-nearby', timestamp: 3_900, receivedAt: 3_910, limb: 'right_wrist', type: 'direction', severity: 'low', source: 'demo', detector: 'demo-review-v1' },
+      ],
+    })
+
+    expect(report.totalReviewRanges).toBe(2)
+    expect(report.reviewRanges).toMatchObject([
+      { limb: 'left_wrist', start: 1_000, end: 2_900 },
+      { limb: 'right_wrist', start: 2_000, end: 3_900 },
+    ])
+  })
 })

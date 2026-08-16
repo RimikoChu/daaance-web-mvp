@@ -31,9 +31,11 @@ const LIMBS: MotionErrorEvent['limb'][] = ['left_wrist', 'right_wrist', 'left_an
 const formatTime = (milliseconds: number): string => `${(milliseconds / 1000).toFixed(2)} s`
 
 const feedbackDetails = (feedback: ReturnType<typeof buildTrainingReport>['rows'][number]['feedback']): string => {
-  if (feedback.executionStatus === 'failed') return feedback.failureReason ? ` · ${feedback.failureReason}` : ''
-  if (feedback.executionStatus !== 'executed') return feedback.sentAt === undefined ? '' : ` · sent ${feedback.sentAt} ms`
+  const sentAt = feedback.sentAt === undefined ? undefined : `sent ${feedback.sentAt} ms`
+  if (feedback.executionStatus === 'failed') return [sentAt, feedback.failureReason].filter(Boolean).join(' · ')
+  if (feedback.executionStatus !== 'executed') return sentAt ?? ''
   return [
+    sentAt,
     feedback.outputs?.join(', '),
     feedback.hardwareTimestamp === undefined ? undefined : `hardware ${feedback.hardwareTimestamp} ms`,
     feedback.receivedAt === undefined ? undefined : `received ${feedback.receivedAt} ms`,
