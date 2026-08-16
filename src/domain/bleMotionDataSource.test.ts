@@ -29,6 +29,20 @@ function imu(receivedAt: number, hardwareTimestamp: number, ax = 0.1): ImuEvent 
 }
 
 describe('BLEMotionDataSource', () => {
+  it('returns only buffered real packets inside a playback window with both clocks intact', () => {
+    const source = new BLEMotionDataSource()
+    source.startSession(10_000)
+    source.addEvent(imu(10_999, 100_999, 1))
+    source.addEvent(imu(11_000, 101_000, 2))
+    source.addEvent(imu(11_080, 101_080, 3))
+    source.addEvent(imu(11_081, 101_081, 4))
+
+    expect(source.getSamplesForWindow(1000, 1080)).toEqual([
+      expect.objectContaining({ timestamp: 1000, hardwareTimestamp: 101_000, receivedAt: 11_000, ax: 2 }),
+      expect.objectContaining({ timestamp: 1080, hardwareTimestamp: 101_080, receivedAt: 11_080, ax: 3 }),
+    ])
+  })
+
   it('returns real samples in the event window with training-relative and original clocks', () => {
     const source = new BLEMotionDataSource()
     source.startSession(10_000)

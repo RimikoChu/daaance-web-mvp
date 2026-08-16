@@ -11,6 +11,7 @@ vi.mock('../domain/mockMotionDataSource', () => ({
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     getSamples: vi.fn(() => []),
+    getSamplesForWindow: vi.fn(() => []),
   } }),
 }))
 
@@ -20,6 +21,7 @@ function createSource(getSamples: MotionDataSource['getSamples'] = vi.fn(() => [
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     getSamples,
+    getSamplesForWindow: vi.fn(() => []),
   }
 }
 

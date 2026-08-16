@@ -159,7 +159,6 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const [hybridSource] = useState(() => new HybridMotionDataSource(
     bleSource,
     mockSource,
-    () => true,
   ))
   const [screen, setScreen] = useState<Screen>('home')
   const [useRealHardware, setUseRealHardware] = useState(false)

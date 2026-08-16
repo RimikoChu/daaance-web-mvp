@@ -35,15 +35,10 @@ export class BLEMotionDataSource implements MotionDataSource {
     this.latestReceivedAt = Number.NEGATIVE_INFINITY
   }
 
-  getSamples(event: ChoreographyEvent): IMUSample[] {
-    if (event.limb !== 'LEFT_WRIST') return []
-
-    const windowStart = event.time - EVENT_WINDOW_MS
-    const windowEnd = event.time + EVENT_WINDOW_MS
-
+  getSamplesForWindow(startMs: number, endMs: number): IMUSample[] {
     return this.events.flatMap(sample => {
       const timestamp = sample.receivedAt - this.sessionStartReceivedAt
-      if (timestamp < windowStart || timestamp > windowEnd) return []
+      if (timestamp < startMs || timestamp > endMs) return []
 
       return [{
         timestamp,
@@ -58,5 +53,10 @@ export class BLEMotionDataSource implements MotionDataSource {
         gz: sample.gz,
       }]
     })
+  }
+
+  getSamples(event: ChoreographyEvent): IMUSample[] {
+    if (event.limb !== 'LEFT_WRIST') return []
+    return this.getSamplesForWindow(event.time - EVENT_WINDOW_MS, event.time + EVENT_WINDOW_MS)
   }
 }

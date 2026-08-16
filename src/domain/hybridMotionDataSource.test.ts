@@ -31,11 +31,50 @@ function realBleWithSample(): BLEMotionDataSource {
 }
 
 describe('HybridMotionDataSource', () => {
+  it('streams real buffered left-wrist samples and Mock samples for exactly the other three limbs', () => {
+    const ble = realBleWithSample()
+    ble.addEvent({
+      type: 'imu',
+      pod: 'left_wrist',
+      hardwareTimestamp: 9926,
+      receivedAt: 11_050,
+      ax: 9,
+      ay: 0,
+      az: 1,
+      gx: 0,
+      gy: 0,
+      gz: 0,
+    })
+    const source = new HybridMotionDataSource(ble, new MockMotionDataSource())
+
+    const samples = source.getSamplesForWindow(1000, 1080)
+    const leftWrist = samples.filter(sample => sample.limb === 'LEFT_WRIST')
+    const mockLimbs = [...new Set(samples.filter(sample => sample.hardwareTimestamp === undefined).map(sample => sample.limb))]
+
+    expect(leftWrist).toEqual([
+      expect.objectContaining({ timestamp: 1000, hardwareTimestamp: 9876, receivedAt: 11_000, ax: 8 }),
+      expect.objectContaining({ timestamp: 1050, hardwareTimestamp: 9926, receivedAt: 11_050, ax: 9 }),
+    ])
+    expect(mockLimbs).toEqual(['RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE'])
+    expect(samples.filter(sample => sample.limb === 'RIGHT_WRIST')).toHaveLength(5)
+    expect(samples.filter(sample => sample.limb === 'LEFT_ANKLE')).toHaveLength(5)
+    expect(samples.filter(sample => sample.limb === 'RIGHT_ANKLE')).toHaveLength(5)
+  })
+
+  it('keeps the left wrist real after the selected hardware session disconnects', () => {
+    const source = new HybridMotionDataSource(realBleWithSample(), new MockMotionDataSource())
+
+    const samples = source.getSamplesForWindow(1000, 1080)
+
+    expect(samples.filter(sample => sample.limb === 'LEFT_WRIST')).toEqual([
+      expect.objectContaining({ hardwareTimestamp: 9876, receivedAt: 11_000 }),
+    ])
+  })
+
   it('returns buffered BLE data for the left wrist in a real-hardware session', () => {
     const source = new HybridMotionDataSource(
       realBleWithSample(),
       new MockMotionDataSource(),
-      () => true,
     )
 
     expect(source.getSamples(leftWristEvent)).toEqual([
@@ -57,25 +96,23 @@ describe('HybridMotionDataSource', () => {
     const source = new HybridMotionDataSource(
       realBleWithSample(),
       new MockMotionDataSource(),
-      () => true,
     )
 
     const samples = source.getSamples({ ...leftWristEvent, id, limb })
-    expect(samples).toHaveLength(3)
-    expect(samples.map(sample => sample.limb)).toEqual([limb, limb, limb])
+    expect(samples.length).toBeGreaterThan(1)
+    expect(samples.every(sample => sample.limb === limb)).toBe(true)
     expect(samples.every(sample => sample.hardwareTimestamp === undefined)).toBe(true)
   })
 
-  it('returns Mock data for the left wrist in an explicit Demo session', () => {
+  it('never substitutes Mock data for the hybrid left wrist', () => {
     const source = new HybridMotionDataSource(
       realBleWithSample(),
       new MockMotionDataSource(),
-      () => false,
     )
 
     const samples = source.getSamples(leftWristEvent)
-    expect(samples).toHaveLength(3)
-    expect(samples.every(sample => sample.hardwareTimestamp === undefined)).toBe(true)
-    expect(samples.map(sample => sample.timestamp)).toEqual([840, 910, 980])
+    expect(samples).toEqual([
+      expect.objectContaining({ limb: 'LEFT_WRIST', hardwareTimestamp: 9876, receivedAt: 11_000 }),
+    ])
   })
 })

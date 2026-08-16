@@ -326,9 +326,9 @@ describe('Daaance training flow', () => {
   it('keeps a disconnected real session BLE-backed for the left wrist while other limbs stay Mock-backed', () => {
     const client = new FakeHardwareClient()
     const bleSource = new BLEMotionDataSource()
-    const originalGetSamples = MockMotionDataSource.prototype.getSamples
-    const getMockSamples = vi.spyOn(MockMotionDataSource.prototype, 'getSamples').mockImplementation(function (this: MockMotionDataSource, event) {
-      return originalGetSamples.call(this, event)
+    const originalGetSamplesForWindow = MockMotionDataSource.prototype.getSamplesForWindow
+    const getMockSamplesForWindow = vi.spyOn(MockMotionDataSource.prototype, 'getSamplesForWindow').mockImplementation(function (this: MockMotionDataSource, startMs, endMs) {
+      return originalGetSamplesForWindow.call(this, startMs, endMs)
     })
 
     try {
@@ -350,14 +350,12 @@ describe('Daaance training flow', () => {
 
       fireEvent.ended(screen.getByLabelText('18.66 秒舞蹈示范'))
 
-      const mockLimbs = getMockSamples.mock.calls.map(([event]) => event.limb)
-      expect.soft(mockLimbs).not.toContain('LEFT_WRIST')
-      expect.soft(new Set(mockLimbs)).toEqual(new Set(['RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']))
+      expect(getMockSamplesForWindow).toHaveBeenCalled()
       const leftWristResult = screen.getByText('左手腕').closest<HTMLElement>('.limb-row')
       expect(leftWristResult).not.toBeNull()
       expect(within(leftWristResult!).getByText('动作未捕捉')).toBeInTheDocument()
     } finally {
-      getMockSamples.mockRestore()
+      getMockSamplesForWindow.mockRestore()
     }
   })
 

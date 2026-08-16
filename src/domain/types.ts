@@ -38,6 +38,7 @@ export interface MotionDataSource {
   readonly kind: 'mock' | 'ble' | 'hybrid'
   connect(): Promise<void>
   disconnect(): Promise<void>
+  getSamplesForWindow(startMs: number, endMs: number): IMUSample[]
   getSamples(event: ChoreographyEvent): IMUSample[]
 }
 
