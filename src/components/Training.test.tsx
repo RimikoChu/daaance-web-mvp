@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHOREOGRAPHY } from '../domain/choreography'
 import { MockMotionDataSource } from '../domain/mockMotionDataSource'
@@ -16,9 +16,9 @@ vi.mock('../domain/mockMotionDataSource', () => ({
   } }),
 }))
 
-function createSource(getSamples: MotionDataSource['getSamples'] = vi.fn(() => [])): MotionDataSource {
+function createSource(getSamples: MotionDataSource['getSamples'] = vi.fn(() => []), kind: MotionDataSource['kind'] = 'mock'): MotionDataSource {
   return {
-    kind: 'mock',
+    kind,
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     getSamples,
@@ -205,7 +205,7 @@ describe('Training', () => {
     ['early', -400],
     ['late', 400],
     ['missed', null],
-  ] as const)('retains a %s left-wrist result and reports its event only once', (status, offset) => {
+  ] as const)('retains a %s left-wrist result and reports its ledger error only once', async (status, offset) => {
     const getSamples = vi.fn((event: ChoreographyEvent) => {
       if (event.id !== 'c1') return [energeticSample(event, event.time)]
       return offset === null ? [] : [energeticSample(event, event.time + offset)]
@@ -213,7 +213,7 @@ describe('Training', () => {
     const onFinish = vi.fn()
     const onFeedbackError = vi.fn(async () => {})
     render(<Training
-      source={createSource(getSamples)}
+      source={createSource(getSamples, 'hybrid')}
       feedbackMode="accessibility"
       strictness="standard"
       onFeedbackError={onFeedbackError}
@@ -227,21 +227,26 @@ describe('Training', () => {
     fireEvent.timeUpdate(video)
     fireEvent.ended(video)
 
-    const results = onFinish.mock.calls[0]?.[0]
+    await waitFor(() => expect(onFinish).toHaveBeenCalledOnce())
+    const snapshot = onFinish.mock.calls[0]?.[0]
+    const results = onFinish.mock.calls[0]?.[1]
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'imu-c1-timing', source: 'imu' }),
+    ]))
     expect(results.find((result: { event: ChoreographyEvent }) => result.event.id === 'c1')).toMatchObject({ status: status as TimingStatus })
     expect(getSamples.mock.calls.filter(([event]) => event.id === 'c1')).toHaveLength(1)
     expect(onFeedbackError).toHaveBeenCalledOnce()
-    expect(onFeedbackError).toHaveBeenCalledWith('c1')
+    expect(onFeedbackError).toHaveBeenCalledWith('imu-c1-timing')
   })
 
-  it('retains an incorrect non-left-wrist result without reporting hardware feedback', () => {
+  it('retains an incorrect non-left-wrist result without reporting hardware feedback', async () => {
     const getSamples = vi.fn((event: ChoreographyEvent) => [
       energeticSample(event, event.time + (event.id === 'c2' ? 400 : 0)),
     ])
     const onFinish = vi.fn()
     const onFeedbackError = vi.fn(async () => {})
     render(<Training
-      source={createSource(getSamples)}
+      source={createSource(getSamples, 'hybrid')}
       feedbackMode="accessibility"
       strictness="standard"
       onFeedbackError={onFeedbackError}
@@ -254,7 +259,12 @@ describe('Training', () => {
     fireEvent.timeUpdate(video)
     fireEvent.ended(video)
 
-    const results = onFinish.mock.calls[0]?.[0]
+    await waitFor(() => expect(onFinish).toHaveBeenCalledOnce())
+    const snapshot = onFinish.mock.calls[0]?.[0]
+    const results = onFinish.mock.calls[0]?.[1]
+    expect(snapshot.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'demo-c2-timing', source: 'demo' }),
+    ]))
     expect(results.find((result: { event: ChoreographyEvent }) => result.event.id === 'c2')).toMatchObject({ status: 'late' })
     expect(onFeedbackError).not.toHaveBeenCalled()
   })

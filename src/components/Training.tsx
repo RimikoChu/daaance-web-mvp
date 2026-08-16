@@ -13,7 +13,7 @@ import { createErrorDeduplicator } from '../trainingReview/deduplicateErrors'
 import { createDemoDetector, createImuTimingDetector } from '../trainingReview/detectors'
 import { clusterReviewRanges } from '../trainingReview/clusterReviewRanges'
 import { createTrainingSessionLedger } from '../trainingReview/ledger'
-import type { TrainingSessionSnapshot } from '../trainingReview/types'
+import type { TrainingSessionLedger, TrainingSessionSnapshot } from '../trainingReview/types'
 
 type LearningMode = 'teaching' | 'follow'
 type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
@@ -21,13 +21,14 @@ type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
 export interface TrainingProps {
   feedbackMode: TrainingMode
   strictness: Strictness
-  onFinish: (results: TimingResult[], snapshot: TrainingSessionSnapshot) => void
+  onFinish: (snapshot: TrainingSessionSnapshot, results: TimingResult[]) => void
   onExit: () => void
   source: MotionDataSource
   autoStart?: boolean
   leftWristStatus?: LeftWristTrainingStatus
   onFeedbackError?: (eventId: string) => Promise<void> | void
   feedbackNow?: () => number
+  sessionLedger?: TrainingSessionLedger
   sessionSnapshot?: TrainingSessionSnapshot
   initialReviewTimestamp?: number
 }
@@ -54,16 +55,17 @@ export function reviewSeekDestination(targetSeconds: number, duration: number): 
   return seekBy(targetSeconds, -(REVIEW_SEEK_PREROLL_MS / 1000), duration)
 }
 
-export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now(), sessionSnapshot, initialReviewTimestamp }: TrainingProps) {
+export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now(), sessionLedger, sessionSnapshot, initialReviewTimestamp }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
   const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
   const reviewDeduplicatorRef = useRef(createErrorDeduplicator({ sustainedWindowMs: 1_000 }))
   const reviewLedgerRef = useRef<ReturnType<typeof createTrainingSessionLedger> | null>(null)
-  if (!sessionSnapshot && !reviewLedgerRef.current) reviewLedgerRef.current = createTrainingSession()
+  if (!sessionSnapshot && !sessionLedger && !reviewLedgerRef.current) reviewLedgerRef.current = createTrainingSession()
   const onFeedbackErrorRef = useRef(onFeedbackError)
   onFeedbackErrorRef.current = onFeedbackError
   const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
+  const pendingFeedbackReportsRef = useRef(new Set<Promise<void>>())
   if (!feedbackGuardRef.current) {
     feedbackGuardRef.current = createFeedbackGuard({
       cooldownMs: FEEDBACK_COOLDOWN_MS,
@@ -81,7 +83,8 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   const [, setReviewLedgerRevision] = useState(0)
   const logicalTime = currentTime * 1000
   const nextEvent = CHOREOGRAPHY.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
-  const reviewSnapshot = sessionSnapshot ?? reviewLedgerRef.current?.snapshot()
+  const activeLedger = sessionLedger ?? reviewLedgerRef.current
+  const reviewSnapshot = sessionSnapshot ?? activeLedger?.snapshot()
   if (!reviewSnapshot) throw new Error('Training requires a review session snapshot')
   const reviewRanges = clusterReviewRanges(reviewSnapshot.errors)
 
@@ -101,11 +104,20 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
       receivedAt: Date.now(),
     }).filter(error => reviewDeduplicatorRef.current.accept(error))
     if (!sessionSnapshot && newErrors.length > 0) {
-      for (const error of newErrors) reviewLedgerRef.current?.appendError(error)
+      for (const error of newErrors) activeLedger?.appendError(error)
       setReviewLedgerRevision(revision => revision + 1)
     }
-    if (event.limb === 'LEFT_WRIST' && result.status !== 'correct') {
-      void feedbackGuardRef.current?.report(event.id)
+    const feedbackError = newErrors.find(error => error.limb === 'left_wrist' && error.type === 'timing')
+    if (source.kind === 'hybrid' && feedbackError && onFeedbackErrorRef.current) {
+      const report = feedbackGuardRef.current?.report(feedbackError.id)
+      if (report) {
+        const settled = report.then(command => {
+          if (command && !sessionSnapshot) activeLedger?.appendCommand(command)
+          if (command && !sessionSnapshot) setReviewLedgerRevision(revision => revision + 1)
+        })
+        pendingFeedbackReportsRef.current.add(settled)
+        void settled.finally(() => pendingFeedbackReportsRef.current.delete(settled))
+      }
     }
     return result
   }
@@ -183,7 +195,14 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     if (sessionSnapshot || finishedRef.current) return
     finishedRef.current = true
     setPlaying(false)
-    onFinish(CHOREOGRAPHY.map(analyzeEvent), reviewLedgerRef.current!.snapshot())
+    const completedResults = CHOREOGRAPHY.map(analyzeEvent)
+    const complete = () => onFinish(activeLedger!.snapshot(), completedResults)
+    const pendingFeedbackReports = [...pendingFeedbackReportsRef.current]
+    if (pendingFeedbackReports.length === 0) {
+      complete()
+      return
+    }
+    void Promise.all(pendingFeedbackReports).then(complete)
   }
 
   return <main className="training-page soft-glass-theme">

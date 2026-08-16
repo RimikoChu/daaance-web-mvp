@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Activity, ArrowLeft, Check, ChevronRight, CirclePlay, Footprints, Sparkles, Volume2, Waves } from 'lucide-react'
 import { LIMB_LABEL } from './domain/choreography'
 import { summarizeSession } from './domain/motion'
@@ -15,10 +15,12 @@ import { HardwareTestPanel } from './hardware/HardwareTestPanel'
 import { Training } from './components/Training'
 import { CountdownGate } from './components/CountdownGate'
 import { TrainingReport } from './components/TrainingReport'
-import type { TrainingSessionSnapshot } from './trainingReview/types'
+import { createTrainingSessionLedger } from './trainingReview/ledger'
+import type { TrainingSessionLedger, TrainingSessionSnapshot } from './trainingReview/types'
 
 type Screen = 'home' | 'setup' | 'countdown' | 'training' | 'results'
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
+let trainingSessionSequence = 0
 
 function Logo() {
   return <div className="logo"><span>Daaance!</span><i /></div>
@@ -170,13 +172,37 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const [strictness, setStrictness] = useState<Strictness>('standard')
   const [results, setResults] = useState<TimingResult[]>([])
   const [completedSnapshot, setCompletedSnapshot] = useState<TrainingSessionSnapshot | null>(null)
+  const [activeLedger, setActiveLedger] = useState<TrainingSessionLedger | null>(null)
   const [reviewTimestamp, setReviewTimestamp] = useState<number | undefined>()
   const webNow = useCallback(() => client.getWebTimestamp(), [client])
   const sendFeedbackError = useCallback((_eventId: string) => hardware.sendCommand('FEEDBACK_ERROR'), [hardware.sendCommand])
-  const ignoreFeedbackError = useCallback((_eventId: string) => {}, [])
+
+  useEffect(() => {
+    if (screen !== 'training' || trainingSource.kind !== 'hybrid' || !activeLedger) return
+    return hardware.subscribeEvents(event => {
+      if (event.type !== 'feedback-executed') return
+      try {
+        activeLedger.appendExecution({
+          id: `feedback-execution-${event.pod}-${event.hardwareTimestamp}-${event.receivedAt}`,
+          pod: event.pod,
+          hardwareTimestamp: event.hardwareTimestamp,
+          receivedAt: event.receivedAt,
+          feedback: event.feedback,
+          outputs: event.outputs,
+        })
+      } catch {
+        // Duplicate acknowledgements remain safely ignored by their stable event ID.
+      }
+    })
+  }, [activeLedger, hardware.subscribeEvents, screen, trainingSource.kind])
 
   const startTraining = (source: MotionDataSource, shouldAutoStart: boolean) => {
+    const ledger = createTrainingSessionLedger(
+      `training-${Date.now()}-${++trainingSessionSequence}`,
+      Date.now(),
+    )
     setTrainingSource(source)
+    setActiveLedger(ledger)
     setAutoStart(shouldAutoStart)
     setReviewTimestamp(undefined)
     setCompletedSnapshot(null)
@@ -188,10 +214,7 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       setScreen('countdown')
       return
     }
-    setAutoStart(false)
-    setReviewTimestamp(undefined)
-    setCompletedSnapshot(null)
-    setScreen('training')
+    startTraining(trainingSource, false)
   }
 
   if (screen === 'home') return <Home controller={hardware} onStart={realHardware => { setUseRealHardware(realHardware); setScreen('setup') }} />
@@ -224,12 +247,13 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       leftWristStatus={leftWristStatus}
       feedbackMode={feedbackMode}
       strictness={strictness}
-      onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : ignoreFeedbackError}
+      onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : undefined}
       feedbackNow={webNow}
-      onExit={() => setScreen('setup')}
+      sessionLedger={reviewTimestamp === undefined ? activeLedger ?? undefined : undefined}
+      onExit={() => { setActiveLedger(null); setScreen('setup') }}
       sessionSnapshot={reviewTimestamp === undefined ? undefined : completedSnapshot ?? undefined}
       initialReviewTimestamp={reviewTimestamp}
-      onFinish={(value, snapshot) => { setResults(value); setCompletedSnapshot(snapshot); setScreen('results') }}
+      onFinish={(snapshot, value) => { setResults(value); setCompletedSnapshot(snapshot); setActiveLedger(null); setScreen('results') }}
     />
   }
   if (!completedSnapshot) return <Results results={results} snapshot={{ schemaVersion: '1.0.0', sessionId: 'empty', startedAt: 0, errors: [], commands: [], executions: [] }} onReviewTime={() => {}} onHome={() => setScreen('home')} onAgain={restartTraining} />
