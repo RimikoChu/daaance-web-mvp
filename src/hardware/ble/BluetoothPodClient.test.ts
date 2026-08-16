@@ -226,6 +226,23 @@ describe('BluetoothPodClient discovery and notifications', () => {
     debug.mockRestore()
   })
 
+  it('bounds temporary BLE diagnostics so a 50 Hz fragmented stream cannot flood the main thread', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })
+    await client.connect()
+
+    for (let index = 0; index < 100; index += 1) {
+      notify(harness.podTx, `{"event":"BUTTON_SINGLE_CLICK","pod":"LW","t":${index}}\n`)
+    }
+
+    expect(debug.mock.calls.filter(([message]) => message === '[BLE chunk]').length).toBeLessThanOrEqual(20)
+    expect(debug.mock.calls.filter(([message]) => message === '[BLE line]').length).toBeLessThanOrEqual(10)
+    expect(debug).toHaveBeenCalledWith('[BLE debug]', 'Further chunk/line logs suppressed for this connection.')
+
+    debug.mockRestore()
+  })
+
   it('emits every complete line from one notification and retains only the trailing fragment', async () => {
     const harness = makeBluetoothHarness()
     const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })

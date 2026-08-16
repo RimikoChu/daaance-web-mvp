@@ -81,6 +81,8 @@ export class BluetoothPodClientError extends Error {
 }
 
 const UNSUPPORTED_MESSAGE = 'Web Bluetooth is not supported in this browser. Please use Chrome or Edge.'
+const BLE_CHUNK_DEBUG_LIMIT = 20
+const BLE_LINE_DEBUG_LIMIT = 10
 
 interface ConnectionAttempt {
   device?: BluetoothDeviceLike
@@ -104,6 +106,9 @@ export class BluetoothPodClient {
   private pendingConnection: Promise<void> | undefined
   private readonly textDecoder = new TextDecoder()
   private receiveBuffer = ''
+  private debugChunkCount = 0
+  private debugLineCount = 0
+  private debugSuppressionLogged = false
 
   private readonly handleNotification: EventListener = () => {
     const value = this.podTxCharacteristic?.value
@@ -111,7 +116,12 @@ export class BluetoothPodClient {
 
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
     const chunk = this.textDecoder.decode(bytes, { stream: true })
-    console.debug('[BLE chunk]', JSON.stringify(chunk))
+    if (this.debugChunkCount < BLE_CHUNK_DEBUG_LIMIT) {
+      console.debug('[BLE chunk]', JSON.stringify(chunk))
+      this.debugChunkCount += 1
+    } else {
+      this.logDebugSuppression()
+    }
     this.receiveBuffer += chunk
 
     let newlineIndex = this.receiveBuffer.indexOf('\n')
@@ -119,7 +129,12 @@ export class BluetoothPodClient {
       const line = this.receiveBuffer.slice(0, newlineIndex).trim()
       this.receiveBuffer = this.receiveBuffer.slice(newlineIndex + 1)
       if (line) {
-        console.debug('[BLE line]', line)
+        if (this.debugLineCount < BLE_LINE_DEBUG_LIMIT) {
+          console.debug('[BLE line]', line)
+          this.debugLineCount += 1
+        } else {
+          this.logDebugSuppression()
+        }
         const result = parseBlePacket(line, this.now())
         if (result.kind === 'event') {
           for (const listener of this.listeners) listener(result.event)
@@ -340,5 +355,14 @@ export class BluetoothPodClient {
   private clearReceiveBuffer(): void {
     this.receiveBuffer = ''
     this.textDecoder.decode()
+    this.debugChunkCount = 0
+    this.debugLineCount = 0
+    this.debugSuppressionLogged = false
+  }
+
+  private logDebugSuppression(): void {
+    if (this.debugSuppressionLogged) return
+    this.debugSuppressionLogged = true
+    console.debug('[BLE debug]', 'Further chunk/line logs suppressed for this connection.')
   }
 }
