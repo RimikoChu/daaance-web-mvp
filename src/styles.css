@@ -508,6 +508,21 @@ h1 em {
 .timeline-progress { background: linear-gradient(90deg, #ffb58e, var(--soft-orange)); box-shadow: 0 0 14px rgba(255, 123, 66, .34); }
 .timeline i { background: rgba(64, 48, 40, .38); }
 .timeline i.accent { background: var(--soft-orange-dark); }
+.choreography-focus { color: var(--soft-orange-dark); font-size: 11px; font-weight: 700; }
+.review-timeline { margin-top: 13px; }
+.review-timeline-track { position: relative; height: 24px; border-radius: 999px; background: rgba(65, 52, 45, .08); }
+.review-range { position: absolute; top: 7px; height: 10px; min-width: 2px; border-radius: 999px; }
+.review-range.standard { background: rgba(255, 123, 66, .36); }
+.review-range.strong { background: rgba(223, 93, 87, .58); box-shadow: 0 0 10px rgba(223, 93, 87, .26); }
+.review-range-jump { position: absolute; inset: 0; width: 100%; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.review-point-marker, .review-current-position { position: absolute; top: 2px; width: 3px; height: 20px; border-radius: 999px; transform: translateX(-50%); }
+.review-point-marker { z-index: 2; padding: 0; border: 0; background: #674d3e; cursor: pointer; }
+.review-point-marker:hover { background: var(--soft-orange-dark); }
+.review-current-position { z-index: 3; pointer-events: none; background: var(--soft-orange); box-shadow: 0 0 8px rgba(255, 123, 66, .55); }
+.review-point-marker:focus-visible, .review-range-jump:focus-visible, .review-navigation button:focus-visible { outline: 3px solid var(--soft-orange-dark); outline-offset: 3px; }
+.review-navigation { display: flex; justify-content: center; gap: 8px; margin-top: 9px; }
+.review-navigation button { min-height: 32px; padding: 6px 11px; color: #554c47; background: rgba(255, 255, 255, .68); border: 1px solid rgba(255, 255, 255, .82); border-radius: 999px; box-shadow: 0 7px 16px rgba(100, 70, 52, .07); cursor: pointer; }
+.review-navigation button:disabled { opacity: .45; cursor: not-allowed; }
 .controls button {
   color: #554c47;
   background: rgba(255, 255, 255, .68);
@@ -611,6 +626,7 @@ h1 em {
   .training-layout { grid-template-columns: 1fr; }
   .training-layout aside { border-right: 0; border-bottom: 1px solid rgba(75, 58, 48, .09); }
   .training-layout aside .device-grid { grid-template-columns: repeat(4, 1fr); }
+  .stage-top { gap: 8px; flex-wrap: wrap; }
   .results-grid { grid-template-columns: 1fr; }
   .limb-results { grid-row: auto; }
 }
@@ -642,6 +658,8 @@ h1 em {
   .strictness button { padding: 11px 5px; }
   .training-layout aside { display: none; }
   .dance-view { padding: 17px 12px; }
+  .review-navigation { justify-content: stretch; }
+  .review-navigation button { flex: 1; }
   .teacher-stage { min-height: 440px; border-radius: 24px; }
   .cue-card { left: 12px; top: 12px; }
   .error-toast { right: 12px; top: 110px; }

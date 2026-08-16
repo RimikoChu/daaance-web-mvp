@@ -7,6 +7,12 @@ import { analyzeTiming } from '../domain/motion'
 import type { ChoreographyEvent, Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from '../domain/types'
 import { DANCE_DURATION_SECONDS, getSegmentBounds, getTeachingSegment, seekBy } from '../playback'
 import { createFeedbackGuard } from '../trainingFeedback'
+import { TrainingTimeline } from './TrainingTimeline'
+import { REVIEW_SEEK_PREROLL_MS } from '../trainingReview/constants'
+import { createErrorDeduplicator } from '../trainingReview/deduplicateErrors'
+import { createDemoDetector, createImuTimingDetector } from '../trainingReview/detectors'
+import { clusterReviewRanges } from '../trainingReview/clusterReviewRanges'
+import type { MotionErrorEvent } from '../trainingReview/types'
 
 type LearningMode = 'teaching' | 'follow'
 type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
@@ -34,10 +40,15 @@ const LEFT_WRIST_STATUS_LABEL: Record<LeftWristTrainingStatus, string> = {
   error: 'Real hardware · Error',
 }
 
+export function reviewSeekDestination(targetSeconds: number, duration: number): number {
+  return seekBy(targetSeconds, -(REVIEW_SEEK_PREROLL_MS / 1000), duration)
+}
+
 export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now() }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
   const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
+  const reviewDeduplicatorRef = useRef(createErrorDeduplicator({ sustainedWindowMs: 1_000 }))
   const onFeedbackErrorRef = useRef(onFeedbackError)
   onFeedbackErrorRef.current = onFeedbackError
   const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
@@ -55,15 +66,27 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   const [playing, setPlaying] = useState(false)
   const [mediaAvailable, setMediaAvailable] = useState(true)
   const [message, setMessage] = useState('视频已就绪，点击播放开始教学。')
+  const [reviewErrors, setReviewErrors] = useState<MotionErrorEvent[]>([])
   const logicalTime = currentTime * 1000
   const nextEvent = CHOREOGRAPHY.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
+  const reviewRanges = clusterReviewRanges(reviewErrors)
 
   const analyzeEvent = (event: ChoreographyEvent): TimingResult => {
     const existing = resultsByEventIdRef.current.get(event.id)
     if (existing) return existing
 
-    const result = analyzeTiming(event, source.getSamples(event), TOLERANCE[strictness])
+    const samples = source.getSamples(event)
+    const result = analyzeTiming(event, samples, TOLERANCE[strictness])
     resultsByEventIdRef.current.set(event.id, result)
+    const detector = source.kind === 'mock' || (source.kind === 'hybrid' && event.limb !== 'LEFT_WRIST')
+      ? createDemoDetector()
+      : createImuTimingDetector(strictness)
+    const newErrors = detector.detect({
+      event,
+      samples,
+      receivedAt: Date.now(),
+    }).filter(error => reviewDeduplicatorRef.current.accept(error))
+    if (newErrors.length > 0) setReviewErrors(errors => [...errors, ...newErrors])
     if (event.limb === 'LEFT_WRIST' && result.status !== 'correct') {
       void feedbackGuardRef.current?.report(event.id)
     }
@@ -92,6 +115,18 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     video.currentTime = getSegmentBounds(nextSegment, duration).start
     setCurrentTime(video.currentTime)
     setActiveSegment(nextSegment)
+  }
+
+  const seekReview = (targetSeconds: number) => {
+    const video = videoRef.current
+    if (!video || !mediaAvailable) return
+
+    video.pause()
+    const destination = reviewSeekDestination(targetSeconds, duration)
+    video.currentTime = destination
+    setPlaying(false)
+    setCurrentTime(destination)
+    setActiveSegment(getTeachingSegment(destination, duration))
   }
 
   const togglePlayback = async () => {
@@ -148,7 +183,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
           return <div className={`device-chip ${nextEvent?.limb === limb ? 'active' : ''}`} key={limb}>
             <span className="device-dot" />
             <span>{LIMB_LABEL[limb]}</span>
-            <small><span>{sourceLabel}</span>{nextEvent?.limb === limb && <span> · 动作中</span>}</small>
+            <small><span>{sourceLabel}</span><span aria-hidden="true"> · </span><span>{playing ? '采集中' : '待命'}</span></small>
           </div>
         })}</div>
         <div className="quiet-card"><Waves size={18} /><span><strong>安静反馈</strong>没有提示时，请继续跳。</span></div>
@@ -158,7 +193,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
           <button disabled={!mediaAvailable} aria-pressed={learningMode === 'teaching'} className={learningMode === 'teaching' ? 'selected' : ''} onClick={() => setLearningMode('teaching')}>教学模式</button>
           <button disabled={!mediaAvailable} aria-pressed={learningMode === 'follow'} className={learningMode === 'follow' ? 'selected' : ''} onClick={() => setLearningMode('follow')}>跟跳模式</button>
         </div>
-        <div className="stage-top"><span>示范舞段 · 基础律动</span><strong>{Math.floor(currentTime).toString().padStart(2, '0')} / {Math.round(duration)} 秒</strong></div>
+        <div className="stage-top"><span>示范舞段 · 基础律动</span><span className="choreography-focus" aria-live="polite">{nextEvent ? `本拍重点 · ${LIMB_LABEL[nextEvent.limb]}` : '本拍重点 · 准备'}</span><strong>{Math.floor(currentTime).toString().padStart(2, '0')} / {Math.round(duration)} 秒</strong></div>
         <div className="teacher-stage video-stage">
           <div className="beat-grid" />
           <video
@@ -204,6 +239,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
         </div>}
         <div className="timeline-wrap">
           <div className="timeline"><div className="timeline-progress" style={{ width: `${duration > 0 ? Math.min(100, currentTime / duration * 100) : 0}%` }} /></div>
+          <TrainingTimeline duration={duration} currentTime={currentTime} errors={reviewErrors} ranges={reviewRanges} onSeek={seekReview} />
           <div className="controls"><button disabled={!mediaAvailable} onClick={() => seek(-5)} aria-label="后退 5 秒">−5</button><button disabled={!mediaAvailable} className="play" onClick={togglePlayback} aria-label={playing ? '暂停' : '播放'}>{playing ? <Pause /> : <CirclePlay />}</button><button disabled={!mediaAvailable} onClick={() => seek(5)} aria-label="前进 5 秒">+5</button></div>
         </div>
       </section>

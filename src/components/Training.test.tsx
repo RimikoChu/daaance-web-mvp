@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHOREOGRAPHY } from '../domain/choreography'
 import { MockMotionDataSource } from '../domain/mockMotionDataSource'
 import type { ChoreographyEvent, IMUSample, MotionDataSource, TimingStatus } from '../domain/types'
-import { Training } from './Training'
+import { reviewSeekDestination, Training } from './Training'
 
 vi.mock('../domain/mockMotionDataSource', () => ({
   MockMotionDataSource: vi.fn(function MockMotionDataSource() { return {
@@ -256,5 +256,38 @@ describe('Training', () => {
     const results = onFinish.mock.calls[0]?.[0]
     expect(results.find((result: { event: ChoreographyEvent }) => result.event.id === 'c2')).toMatchObject({ status: 'late' })
     expect(onFeedbackError).not.toHaveBeenCalled()
+  })
+
+  it('pauses the shared video before seeking a review marker with one-second preroll', () => {
+    renderTraining()
+    const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+    const pause = vi.spyOn(video, 'pause')
+    Object.defineProperty(video, 'currentTime', { value: 2.5, writable: true })
+
+    fireEvent.timeUpdate(video)
+    fireEvent.click(screen.getByRole('button', { name: /left wrist.*timing.*demo-generated/i }))
+
+    expect(pause).toHaveBeenCalledOnce()
+    expect(video.currentTime).toBe(1)
+    expect(screen.getByRole('button', { name: '第一段' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('clamps review seeks to the shared video bounds after applying preroll', () => {
+    expect(reviewSeekDestination(0.5, 18.655)).toBe(0)
+    expect(reviewSeekDestination(30, 18.655)).toBe(18.655)
+  })
+
+  it('shows all four Pods as collecting while keeping choreography focus separate', () => {
+    renderTraining()
+    const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+    Object.defineProperty(video, 'currentTime', { value: 2, writable: true })
+
+    fireEvent.play(video)
+    fireEvent.timeUpdate(video)
+
+    expect(screen.getAllByText('采集中')).toHaveLength(4)
+    expect(screen.getByText('本拍重点 · 左手腕')).toBeInTheDocument()
+    expect(screen.queryByText('动作中')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Demo')).toHaveLength(4)
   })
 })
