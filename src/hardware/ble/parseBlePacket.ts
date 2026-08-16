@@ -70,6 +70,9 @@ export function parseBlePacket(value: string, receivedAt: number): BlePacketPars
   }
 
   if (!isKnownPacket(parsed) || parsed.pod !== 'left_wrist' || !isFiniteNumber(receivedAt)) {
+    if (parsed.event === 'FEEDBACK_EXECUTED') {
+      console.debug('[Daaance BLE] Invalid event', parsed.event)
+    }
     return { kind: 'ignored', reason: 'invalid' }
   }
 

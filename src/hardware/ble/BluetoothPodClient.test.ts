@@ -212,6 +212,41 @@ describe('BluetoothPodClient discovery and notifications', () => {
     })
   })
 
+  it('logs an invalid feedback acknowledgement and delivers the following valid acknowledgement', async () => {
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({
+      bluetooth: harness.bluetooth,
+      config: configuredBle,
+      now: () => 987.5,
+    })
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const listener = vi.fn()
+    client.subscribe(listener)
+    await client.connect()
+
+    notify(harness.podTx, JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs: [],
+    }))
+    notify(harness.podTx, JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123457,
+      feedback: 'ERROR', outputs: ['LED', 'VIBRATION'],
+    }))
+
+    expect(debug).toHaveBeenCalledOnce()
+    expect(debug).toHaveBeenCalledWith('[Daaance BLE] Invalid event', 'FEEDBACK_EXECUTED')
+    expect(listener).toHaveBeenCalledOnce()
+    expect(listener).toHaveBeenCalledWith({
+      type: 'feedback-executed',
+      pod: 'left_wrist',
+      hardwareTimestamp: 123457,
+      receivedAt: 987.5,
+      feedback: 'ERROR',
+      outputs: ['LED', 'VIBRATION'],
+    })
+
+    debug.mockRestore()
+  })
+
   it('delivers the exact canonical HELLO notification without a hardware timestamp', async () => {
     const harness = makeBluetoothHarness()
     const client = new BluetoothPodClient({

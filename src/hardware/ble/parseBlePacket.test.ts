@@ -101,6 +101,18 @@ describe('parseBlePacket', () => {
     }), 987.5)).toEqual({ kind: 'ignored', reason: 'invalid' })
   })
 
+  it('ignores and logs a malformed known FEEDBACK_EXECUTED acknowledgement once', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+
+    expect(parseBlePacket(JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs: [],
+    }), 987.5)).toEqual({ kind: 'ignored', reason: 'invalid' })
+    expect(debug).toHaveBeenCalledOnce()
+    expect(debug).toHaveBeenCalledWith('[Daaance BLE] Invalid event', 'FEEDBACK_EXECUTED')
+
+    debug.mockRestore()
+  })
+
   it('ignores malformed JSON without logging', () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
 
