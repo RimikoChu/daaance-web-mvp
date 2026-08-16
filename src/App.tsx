@@ -5,7 +5,7 @@ import { summarizeSession } from './domain/motion'
 import { BLEMotionDataSource } from './domain/bleMotionDataSource'
 import { HybridMotionDataSource } from './domain/hybridMotionDataSource'
 import { MockMotionDataSource } from './domain/mockMotionDataSource'
-import type { Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from './domain/types'
+import type { ChoreographyEvent, Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from './domain/types'
 import { initialPodStates, PodConnectionPanel } from './components/PodConnectionPanel'
 import type { PodConnectionHandle, PodStates } from './components/PodConnectionPanel'
 import { BluetoothPodClient } from './hardware/ble/BluetoothPodClient'
@@ -147,9 +147,10 @@ function Results({ results, onAgain, onHome }: { results: TimingResult[]; onAgai
 export interface AppProps {
   hardwareClient?: LeftWristHardwareClient
   bleSource?: BLEMotionDataSource
+  choreography?: ChoreographyEvent[]
 }
 
-export default function App({ hardwareClient, bleSource: injectedBleSource }: AppProps = {}) {
+export default function App({ hardwareClient, bleSource: injectedBleSource, choreography }: AppProps = {}) {
   const [client] = useState<LeftWristHardwareClient>(() => hardwareClient ?? new BluetoothPodClient())
   const [bleSource] = useState(() => injectedBleSource ?? new BLEMotionDataSource())
   const hardware = useLeftWristHardware(client, bleSource)
@@ -211,6 +212,7 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
           ? 'error'
           : 'disconnected'
     return <Training
+      choreography={choreography}
       source={trainingSource}
       autoStart={autoStart}
       leftWristStatus={leftWristStatus}
