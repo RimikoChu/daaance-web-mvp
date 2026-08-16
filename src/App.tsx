@@ -28,7 +28,7 @@ const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
 let trainingSessionSequence = 0
 
 function Logo() {
-  return <div className="logo"><span>Daaance!</span><i /></div>
+  return <div className="logo"><span>Daaaance!</span><i /></div>
 }
 
 const POD_STATUS_LABEL = {
@@ -148,7 +148,7 @@ function Results({ results, snapshot, onReviewTime, onAgain, onHome }: { results
     <div className="results-grid">
       <section className="score-card"><span>节奏准确率</span><div className="score-ring" style={{ '--score': `${summary.accuracy * 3.6}deg` } as React.CSSProperties}><strong>{summary.accuracy}<small>%</small></strong></div><p>在当前纠错标准下<br />命中目标节拍</p></section>
       <section className="limb-results"><h3>四肢表现</h3>{LIMBS.map(limb => { const item = summary.limbs[limb]; return <div className="limb-row" key={limb}><div className="limb-symbol">{limb.includes('WRIST') ? <Waves /> : <Footprints />}</div><div><strong>{item.label}</strong><small>{item.tendency === 'good' ? '节奏稳定' : item.averageError === null ? '动作未捕捉' : `平均 ${Math.abs(item.averageError)}ms ${item.averageError > 0 ? '偏晚' : '偏早'}`}</small></div><span className={item.tendency === 'good' ? 'good' : 'focus'}>{item.tendency === 'good' ? '很好' : '注意'}</span></div>})}</section>
-      <section className="coach-card"><div><Sparkles /></div><span><small>Daaance! 教练建议</small><p>{summary.coaching}</p></span></section>
+      <section className="coach-card"><div><Sparkles /></div><span><small>Daaaance! 教练建议</small><p>{summary.coaching}</p></span></section>
     </div>
   </main></>
 }

@@ -142,7 +142,7 @@ export function Studio({
 
   return <main className="studio-page">
     <header className="studio-header">
-      <div><span className="studio-kicker">Daaance! Studio</span><h1>关键拍编辑器</h1><p>播放视频，按空格快速标记当前时刻。</p></div>
+      <div><span className="studio-kicker">Daaaance! Studio</span><h1>关键拍编辑器</h1><p>播放视频，按空格快速标记当前时刻。</p></div>
       <div className="studio-actions">
         <button className="studio-mark-action" onClick={markCurrentBeat}><Plus size={17} /> 添加当前关键拍</button>
         <button className="secondary" onClick={reset}><RotateCcw size={16} /> 清空全部</button>

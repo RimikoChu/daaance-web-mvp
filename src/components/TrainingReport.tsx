@@ -50,7 +50,7 @@ export function TrainingReport({ snapshot, onReviewTime, onAgain, onHome }: Trai
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `daaance-session-${snapshot.sessionId}.json`
+    anchor.download = `daaaance-session-${snapshot.sessionId}.json`
     document.body.append(anchor)
     anchor.click()
     anchor.remove()
@@ -58,7 +58,7 @@ export function TrainingReport({ snapshot, onReviewTime, onAgain, onHome }: Trai
   }
 
   return <main className="page-shell results-page report-page soft-glass-theme">
-    <nav><div className="logo"><span>Daaance!</span><i /></div><button className="text-button" onClick={onHome}>返回首页</button></nav>
+    <nav><div className="logo"><span>Daaaance!</span><i /></div><button className="text-button" onClick={onHome}>返回首页</button></nav>
     <section className="report-head">
       <div><span>训练记录已生成</span><h1>训练复盘报告</h1><p>按独立动作误差回看本次训练；硬件执行状态只在收到确认后标记为已执行。</p></div>
       <button className="report-export" type="button" onClick={exportJson}>导出 JSON</button>

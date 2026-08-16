@@ -78,7 +78,7 @@ describe('TrainingReport', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob
     expect(await blob.text()).toBe(JSON.stringify(expectedPayload, null, 2))
     expect(click).toHaveBeenCalledOnce()
-    expect(downloadedAnchor?.download).toBe('daaance-session-session export.json')
+    expect(downloadedAnchor?.download).toBe('daaaance-session-session export.json')
     expect(document.querySelector(`a[download="${downloadedAnchor?.download}"]`)).not.toBeInTheDocument()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:session')
     click.mockRestore()

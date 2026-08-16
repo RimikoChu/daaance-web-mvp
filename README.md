@@ -1,4 +1,4 @@
-# Daaance! Web MVP
+# Daaaance! Web MVP
 
 48 小时硬件黑客松软件 Demo。默认使用 Mock IMU，无需连接硬件即可完成约 20 秒训练闭环。
 

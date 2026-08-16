@@ -85,7 +85,14 @@ function notify(characteristic: FakeBluetoothCharacteristic, packet: string): vo
   characteristic.dispatchEvent(new Event('characteristicvaluechanged'))
 }
 
-describe('Daaance training flow', () => {
+describe('Daaaance training flow', () => {
+  it('uses the Daaaance brand spelling in the visible application logo', () => {
+    render(<App hardwareClient={new FakeHardwareClient()} />)
+
+    expect(screen.getByText('Daaaance!')).toBeInTheDocument()
+    expect(screen.queryByText('Daaance!')).not.toBeInTheDocument()
+  })
+
   it('correlates training-triggered left-wrist feedback with a shared-clock FEEDBACK_EXECUTED acknowledgement', async () => {
     const boundary = makeBluetoothBoundary()
     let webNow = 100

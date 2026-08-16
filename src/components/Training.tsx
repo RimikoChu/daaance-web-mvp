@@ -227,7 +227,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
 
   return <main className="training-page soft-glass-theme">
     <header>
-      <div className="logo"><span>Daaance!</span><i /></div>
+      <div className="logo"><span>Daaaance!</span><i /></div>
       <div className="training-mode"><span className="live-dot" />{feedbackMode === 'accessibility' ? '无障碍模式' : '节奏教练模式'}</div>
       <button className="text-button" onClick={exit}>退出训练</button>
     </header>

@@ -15,6 +15,13 @@ function client(initial = timeline()): ChoreographyClient {
 }
 
 describe('Studio', () => {
+  it('uses the Daaaance brand spelling', () => {
+    render(<Studio client={client()} />)
+
+    expect(screen.getByText('Daaaance! Studio')).toBeInTheDocument()
+    expect(screen.queryByText('Daaance! Studio')).not.toBeInTheDocument()
+  })
+
   afterEach(() => vi.restoreAllMocks())
 
   it('loads the fixed demo and marks an exact beat with Space', async () => {
