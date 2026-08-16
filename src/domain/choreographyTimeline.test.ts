@@ -12,10 +12,9 @@ describe('choreography timeline', () => {
     const second = cloneDefaultTimeline()
 
     expect(first).toMatchObject({ schemaVersion: 1, danceId: 'demo-dance-001', durationMs: 18660 })
-    expect(first.beats).toHaveLength(12)
-    expect(first.beats.map(beat => beat.timeMs)).toEqual([2000, 3200, 4500, 5700, 7200, 8400, 9800, 11200, 12800, 14300, 16000, 17800])
-    first.beats[0].limb = 'right_ankle'
-    expect(second.beats[0].limb).toBe('left_wrist')
+    expect(first.beats).toEqual([])
+    first.beats.push({ id: 'manual', timeMs: 1000, intensity: 'medium', limb: 'left_wrist' })
+    expect(second.beats).toEqual([])
   })
 
   it('normalizes sorting and replaces the client timestamp', () => {

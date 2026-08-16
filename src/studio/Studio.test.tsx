@@ -91,13 +91,25 @@ describe('Studio', () => {
     Object.defineProperty(video, 'currentTime', { value: 1, writable: true })
     fireEvent.keyDown(window, { key: ' ', code: 'Space' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }))
+    fireEvent.click(screen.getByRole('button', { name: '清空全部' }))
     expect(screen.getByText('1 个关键拍')).toBeInTheDocument()
     confirmReset.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }))
+    fireEvent.click(screen.getByRole('button', { name: '清空全部' }))
 
-    expect(screen.getByText('12 个关键拍')).toBeInTheDocument()
+    expect(screen.getByText('0 个关键拍')).toBeInTheDocument()
     expect(api.save).not.toHaveBeenCalled()
+  })
+
+  it('returns to the first frame when playback ends instead of leaving a black frame', async () => {
+    render(<Studio client={client()} />)
+    const video = screen.getByLabelText('Studio 18.66 秒舞蹈示范') as HTMLVideoElement
+    await screen.findByText('0 个关键拍')
+    Object.defineProperty(video, 'currentTime', { value: 18.66, writable: true })
+
+    fireEvent.ended(video)
+
+    expect(video.currentTime).toBe(0)
+    expect(screen.getByText('0.00s')).toBeInTheDocument()
   })
 
   it('uses the server response after save and preserves the draft when save fails', async () => {

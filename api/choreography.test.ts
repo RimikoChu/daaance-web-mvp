@@ -32,12 +32,15 @@ describe('/api/choreography', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('X-Choreography-Source')).toBe('default')
-    expect((await response.json()).beats).toHaveLength(12)
+    expect((await response.json()).beats).toEqual([])
   })
 
   it('validates and persists a normalized POST document', async () => {
     const store = repository()
-    const input = { ...cloneDefaultTimeline(), updatedAt: 'client', beats: cloneDefaultTimeline().beats.slice(0, 2).reverse() }
+    const input = { ...cloneDefaultTimeline(), updatedAt: 'client', beats: [
+      { id: 'c2', timeMs: 3200, intensity: 'strong', limb: 'right_wrist' },
+      { id: 'c1', timeMs: 2000, intensity: 'medium', limb: 'left_wrist' },
+    ] }
     const response = await handleChoreographyRequest(
       new Request('http://local/api/choreography', {
         method: 'POST',

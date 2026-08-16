@@ -42,7 +42,7 @@ function comparable(timeline: ChoreographyTimeline): string {
 export function Studio({
   client = defaultClient,
   createId = () => crypto.randomUUID(),
-  confirmReset = () => window.confirm('放弃当前修改并恢复默认关键拍？'),
+  confirmReset = () => window.confirm('清空当前所有人工关键拍？'),
 }: StudioProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const rowRefs = useRef(new Map<string, HTMLElement>())
@@ -115,7 +115,7 @@ export function Studio({
     const next = cloneDefaultTimeline()
     setDraft(next)
     setSelectedBeatId(null)
-    setMessage('已恢复默认关键拍；点击保存并同步后才会写入。')
+    setMessage('已清空全部关键拍；点击保存并同步后才会写入。')
   }
 
   const save = async () => {
@@ -145,7 +145,7 @@ export function Studio({
       <div><span className="studio-kicker">Daaance! Studio</span><h1>关键拍编辑器</h1><p>播放视频，按空格快速标记当前时刻。</p></div>
       <div className="studio-actions">
         <button className="studio-mark-action" onClick={markCurrentBeat}><Plus size={17} /> 添加当前关键拍</button>
-        <button className="secondary" onClick={reset}><RotateCcw size={16} /> Reset to default</button>
+        <button className="secondary" onClick={reset}><RotateCcw size={16} /> 清空全部</button>
         <button className="primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? '同步中…' : '保存并同步'}</button>
       </div>
     </header>
@@ -161,6 +161,11 @@ export function Studio({
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onTimeUpdate={event => setCurrentTimeMs(Math.round(event.currentTarget.currentTime * 1000))}
+          onEnded={event => {
+            event.currentTarget.currentTime = 0
+            setCurrentTimeMs(0)
+            setPlaying(false)
+          }}
         />
         <button className="studio-play" onClick={togglePlayback} aria-label={playing ? '暂停视频' : '播放视频'}>{playing ? <Pause /> : <CirclePlay />}</button>
         <div className="studio-clock"><strong>{formatTime(currentTimeMs)}</strong><span>/ 18.66s</span></div>

@@ -27,20 +27,7 @@ export class TimelineValidationError extends Error {
 
 const INTENSITIES: BeatIntensity[] = ['light', 'medium', 'strong']
 const LIMBS: StudioLimb[] = ['left_wrist', 'right_wrist', 'left_ankle', 'right_ankle']
-const DEFAULT_BEATS: KeyBeat[] = [
-  { id: 'c1', timeMs: 2000, limb: 'left_wrist', intensity: 'medium' },
-  { id: 'c2', timeMs: 3200, limb: 'right_wrist', intensity: 'strong' },
-  { id: 'c3', timeMs: 4500, limb: 'left_ankle', intensity: 'medium' },
-  { id: 'c4', timeMs: 5700, limb: 'right_ankle', intensity: 'strong' },
-  { id: 'c5', timeMs: 7200, limb: 'left_wrist', intensity: 'medium' },
-  { id: 'c6', timeMs: 8400, limb: 'right_wrist', intensity: 'medium' },
-  { id: 'c7', timeMs: 9800, limb: 'left_ankle', intensity: 'strong' },
-  { id: 'c8', timeMs: 11200, limb: 'right_ankle', intensity: 'medium' },
-  { id: 'c9', timeMs: 12800, limb: 'left_wrist', intensity: 'strong' },
-  { id: 'c10', timeMs: 14300, limb: 'right_wrist', intensity: 'medium' },
-  { id: 'c11', timeMs: 16000, limb: 'left_ankle', intensity: 'medium' },
-  { id: 'c12', timeMs: 17800, limb: 'right_ankle', intensity: 'strong' },
-]
+const DEFAULT_BEATS: KeyBeat[] = []
 
 export const DEFAULT_TIMELINE: Readonly<ChoreographyTimeline> = Object.freeze({
   schemaVersion: 1,
