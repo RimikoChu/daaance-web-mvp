@@ -3,7 +3,7 @@ import {
   normalizeTimeline,
   TimelineValidationError,
   type ChoreographyTimeline,
-} from '../src/domain/choreographyTimeline'
+} from '../src/domain/choreographyTimeline.js'
 
 export interface TimelineRepository {
   read(): Promise<unknown | null>

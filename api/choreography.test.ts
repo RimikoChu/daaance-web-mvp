@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { cloneDefaultTimeline } from '../src/domain/choreographyTimeline'
-import { handleChoreographyRequest, type TimelineRepository } from './_choreographyService'
+import { cloneDefaultTimeline } from '../src/domain/choreographyTimeline.js'
+import { handleChoreographyRequest, type TimelineRepository } from './_choreographyService.js'
 
 function repository(value: unknown | null = cloneDefaultTimeline()): TimelineRepository {
   return { read: vi.fn(async () => value), write: vi.fn(async () => undefined) }

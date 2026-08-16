@@ -1,5 +1,5 @@
-import { createBlobTimelineRepository } from './_blobRepository'
-import { handleChoreographyRequest } from './_choreographyService'
+import { createBlobTimelineRepository } from './_blobRepository.js'
+import { handleChoreographyRequest } from './_choreographyService.js'
 
 const repository = createBlobTimelineRepository()
 

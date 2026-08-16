@@ -1,4 +1,4 @@
-import type { ChoreographyEvent, Limb } from './types'
+import type { ChoreographyEvent, Limb } from './types.js'
 
 export type BeatIntensity = 'light' | 'medium' | 'strong'
 export type StudioLimb = 'left_wrist' | 'right_wrist' | 'left_ankle' | 'right_ankle'

@@ -1,6 +1,6 @@
 import { get, put } from '@vercel/blob'
-import type { ChoreographyTimeline } from '../src/domain/choreographyTimeline'
-import type { TimelineRepository } from './_choreographyService'
+import type { ChoreographyTimeline } from '../src/domain/choreographyTimeline.js'
+import type { TimelineRepository } from './_choreographyService.js'
 
 const PATHNAME = 'choreography/demo-dance-001.json'
 
