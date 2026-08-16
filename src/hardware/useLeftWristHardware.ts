@@ -12,9 +12,17 @@ export type LeftWristHardwareSnapshot = BluetoothPodSnapshot & {
   imuHz: number
 }
 
+export interface HardwareCommandAttempt {
+  commandId: string
+  command: DaaanceBleCommand
+  sentAt: number
+  status: 'sent' | 'failed'
+  failureReason?: string
+}
+
 export type LeftWristHardwareClient = Pick<
   BluetoothPodClient,
-  'connect' | 'disconnect' | 'getSnapshot' | 'sendCommand' | 'subscribe' | 'subscribeSnapshot'
+  'connect' | 'disconnect' | 'getSnapshot' | 'getWebTimestamp' | 'sendCommand' | 'subscribe' | 'subscribeSnapshot'
 >
 
 export interface LeftWristHardwareController {
@@ -25,10 +33,14 @@ export interface LeftWristHardwareController {
   subscribeEvents: (listener: (event: BluetoothPodEvent) => void) => () => void
   recentEvents: LeftWristDiscreteEvent[]
   latestImu?: ImuEvent
+  rawEventLog: BluetoothPodEvent[]
+  commandAttempts: HardwareCommandAttempt[]
 }
 
 const IMU_RATE_WINDOW_MS = 1000
 const MAX_RECENT_EVENTS = 20
+const MAX_RAW_EVENTS = 50
+const MAX_COMMAND_ATTEMPTS = 50
 
 function withTelemetry(snapshot: BluetoothPodSnapshot): LeftWristHardwareSnapshot {
   return { ...snapshot, imuHz: 0 }
@@ -47,9 +59,12 @@ export function useLeftWristHardware(
   const [snapshot, setSnapshot] = useState<LeftWristHardwareSnapshot>(() => withTelemetry(client.getSnapshot()))
   const [latestImu, setLatestImu] = useState<ImuEvent>()
   const [recentEvents, setRecentEvents] = useState<LeftWristDiscreteEvent[]>([])
+  const [rawEventLog, setRawEventLog] = useState<BluetoothPodEvent[]>([])
+  const [commandAttempts, setCommandAttempts] = useState<HardwareCommandAttempt[]>([])
   const imuReceivedAt = useRef<number[]>([])
   const imuRateExpiry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const eventListeners = useRef(new Set<(event: BluetoothPodEvent) => void>())
+  const commandSequence = useRef(0)
 
   const resetTelemetry = useCallback((connection: BluetoothPodSnapshot) => {
     if (imuRateExpiry.current !== undefined) clearTimeout(imuRateExpiry.current)
@@ -65,6 +80,7 @@ export function useLeftWristHardware(
 
   useEffect(() => {
     const unsubscribe = client.subscribe(event => {
+      setRawEventLog(current => [...current, event].slice(-MAX_RAW_EVENTS))
       if (event.type === 'imu') {
         bleSource.addEvent(event)
         setLatestImu(event)
@@ -115,7 +131,27 @@ export function useLeftWristHardware(
 
   const disconnect = useCallback(() => client.disconnect(), [client])
 
-  const sendCommand = useCallback((command: DaaanceBleCommand) => client.sendCommand(command), [client])
+  const sendCommand = useCallback(async (command: DaaanceBleCommand): Promise<void> => {
+    const sentAt = client.getWebTimestamp()
+    const commandId = `web-command-${sentAt}-${++commandSequence.current}`
+    const record = (attempt: HardwareCommandAttempt) => {
+      setCommandAttempts(current => [...current, attempt].slice(-MAX_COMMAND_ATTEMPTS))
+      return attempt
+    }
+    try {
+      await client.sendCommand(command)
+      record({ commandId, command, sentAt, status: 'sent' })
+    } catch (cause) {
+      const attempt = record({
+        commandId,
+        command,
+        sentAt,
+        status: 'failed',
+        failureReason: cause instanceof Error ? cause.message : String(cause),
+      })
+      throw cause instanceof Error ? cause : new Error(attempt.failureReason)
+    }
+  }, [client])
 
   const subscribeEvents = useCallback((listener: (event: BluetoothPodEvent) => void) => {
     eventListeners.current.add(listener)
@@ -124,5 +160,15 @@ export function useLeftWristHardware(
     }
   }, [])
 
-  return { snapshot, connect, disconnect, sendCommand, subscribeEvents, recentEvents, latestImu }
+  return {
+    snapshot,
+    connect,
+    disconnect,
+    sendCommand,
+    subscribeEvents,
+    recentEvents,
+    latestImu,
+    rawEventLog,
+    commandAttempts,
+  }
 }

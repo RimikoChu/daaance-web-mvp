@@ -15,6 +15,8 @@ function controller(
     sendCommand: vi.fn(async () => {}),
     subscribeEvents: vi.fn(() => vi.fn()),
     recentEvents: [],
+    rawEventLog: [],
+    commandAttempts: [],
     ...overrides,
   }
 }
@@ -78,6 +80,72 @@ describe('HardwareTestPanel', () => {
     expect(screen.getByText(message)).toBeInTheDocument()
   })
 
+  it('exposes truthful connection controls, explicit Mock pods, command audit records, ACK timing, and raw BLE events', () => {
+    const hardware = controller({ state: 'connected', deviceName: 'DAAANCE_LW', imuHz: 0 }, {
+      commandAttempts: [{
+        commandId: 'command-7', command: 'FEEDBACK_ERROR', sentAt: 100, status: 'sent',
+      }],
+      rawEventLog: [{
+        type: 'feedback-executed', pod: 'left_wrist', hardwareTimestamp: 1200, receivedAt: 135,
+        feedback: 'ERROR', outputs: ['LED', 'VIBRATION'],
+      }],
+    })
+    render(<HardwareTestPanel controller={hardware} />)
+
+    expect(screen.getByRole('button', { name: 'Disconnect DAAANCE_LW' })).toBeEnabled()
+    expect(screen.getByText('Right wrist · Mock')).toBeInTheDocument()
+    expect(screen.getByText('Left ankle · Mock')).toBeInTheDocument()
+    expect(screen.getByText('Right ankle · Mock')).toBeInTheDocument()
+    expect(screen.getByText('command-7 · FEEDBACK_ERROR · sent 100 ms · execution acknowledged')).toBeInTheDocument()
+    expect(screen.getByText('FEEDBACK_EXECUTED · hardware 1200 ms · received 135 ms · latency 35 ms · LED, VIBRATION')).toBeInTheDocument()
+    expect(screen.getByText('feedback-executed · received 135 ms')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect DAAANCE_LW' }))
+    expect(hardware.disconnect).toHaveBeenCalledOnce()
+  })
+
+  it('offers only the DAAANCE_LW connection action when disconnected', () => {
+    const hardware = controller({ state: 'disconnected', imuHz: 0 })
+    render(<HardwareTestPanel controller={hardware} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect DAAANCE_LW' }))
+    expect(hardware.connect).toHaveBeenCalledOnce()
+  })
+
+  it('correlates one acknowledgement only to the closest preceding FEEDBACK_ERROR attempt', () => {
+    render(<HardwareTestPanel controller={controller({ state: 'connected', deviceName: 'DAAANCE_LW', imuHz: 0 }, {
+      commandAttempts: [
+        { commandId: 'command-early', command: 'FEEDBACK_ERROR', sentAt: 100, status: 'sent' },
+        { commandId: 'command-late', command: 'FEEDBACK_ERROR', sentAt: 120, status: 'sent' },
+      ],
+      rawEventLog: [{
+        type: 'feedback-executed', pod: 'left_wrist', hardwareTimestamp: 1_200, receivedAt: 135,
+        feedback: 'ERROR', outputs: ['LED'],
+      }],
+    })} />)
+
+    expect(screen.getByText('command-early · FEEDBACK_ERROR · sent 100 ms · execution unconfirmed')).toBeInTheDocument()
+    expect(screen.getByText('command-late · FEEDBACK_ERROR · sent 120 ms · execution acknowledged')).toBeInTheDocument()
+    expect(screen.getByText('FEEDBACK_EXECUTED · hardware 1200 ms · received 135 ms · latency 15 ms · LED')).toBeInTheDocument()
+  })
+
+  it('does not treat a duplicate FEEDBACK_EXECUTED record as a second execution', () => {
+    const acknowledgement = {
+      type: 'feedback-executed' as const, pod: 'left_wrist' as const, hardwareTimestamp: 1_200, receivedAt: 135,
+      feedback: 'ERROR' as const, outputs: ['LED'] as Array<'LED' | 'VIBRATION'>,
+    }
+    render(<HardwareTestPanel controller={controller({ state: 'connected', deviceName: 'DAAANCE_LW', imuHz: 0 }, {
+      commandAttempts: [
+        { commandId: 'command-early', command: 'FEEDBACK_ERROR', sentAt: 100, status: 'sent' },
+        { commandId: 'command-late', command: 'FEEDBACK_ERROR', sentAt: 120, status: 'sent' },
+      ],
+      rawEventLog: [acknowledgement, { ...acknowledgement }],
+    })} />)
+
+    expect(screen.getByText('command-early · FEEDBACK_ERROR · sent 100 ms · execution unconfirmed')).toBeInTheDocument()
+    expect(screen.getByText('command-late · FEEDBACK_ERROR · sent 120 ms · execution acknowledged')).toBeInTheDocument()
+  })
+
   it('maps the five connected controls to exact BLE commands in control order', () => {
     const hardware = controller({ state: 'connected', deviceName: 'DAAANCE_LW', imuHz: 0 })
     render(<HardwareTestPanel controller={hardware} />)
@@ -105,8 +173,9 @@ describe('HardwareTestPanel', () => {
   ])('disables every hardware control while state is $state', snapshot => {
     render(<HardwareTestPanel controller={controller(snapshot)} />)
 
-    expect(screen.getAllByRole('button')).toHaveLength(5)
-    for (const control of screen.getAllByRole('button')) {
+    const controls = screen.getByRole('region', { name: 'Hardware controls' }).querySelectorAll('button')
+    expect(controls).toHaveLength(5)
+    for (const control of controls) {
       expect(control).toBeDisabled()
     }
   })

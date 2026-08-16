@@ -11,6 +11,8 @@ function controller(snapshot: LeftWristHardwareSnapshot): LeftWristHardwareContr
     sendCommand: vi.fn(async () => {}),
     subscribeEvents: vi.fn(() => vi.fn()),
     recentEvents: [],
+    rawEventLog: [],
+    commandAttempts: [],
   }
 }
 

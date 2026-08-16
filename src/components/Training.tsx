@@ -20,6 +20,7 @@ export interface TrainingProps {
   autoStart?: boolean
   leftWristStatus?: LeftWristTrainingStatus
   onFeedbackError?: (eventId: string) => Promise<void> | void
+  feedbackNow?: () => number
 }
 
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
@@ -33,7 +34,7 @@ const LEFT_WRIST_STATUS_LABEL: Record<LeftWristTrainingStatus, string> = {
   error: 'Real hardware · Error',
 }
 
-export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError }: TrainingProps) {
+export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now() }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
   const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
@@ -43,7 +44,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   if (!feedbackGuardRef.current) {
     feedbackGuardRef.current = createFeedbackGuard({
       cooldownMs: FEEDBACK_COOLDOWN_MS,
-      now: Date.now,
+      now: feedbackNow,
       send: eventId => onFeedbackErrorRef.current?.(eventId),
     })
   }

@@ -33,6 +33,10 @@ class FakeHardwareClient {
     return this.snapshot
   }
 
+  getWebTimestamp(): number {
+    return globalThis.performance.now()
+  }
+
   publishSnapshot(snapshot: BluetoothPodSnapshot): void {
     this.snapshot = snapshot
     this.snapshotListener?.(snapshot)
@@ -81,6 +85,79 @@ function notify(characteristic: FakeBluetoothCharacteristic, packet: string): vo
 }
 
 describe('Daaance training flow', () => {
+  it('correlates training-triggered left-wrist feedback with a shared-clock FEEDBACK_EXECUTED acknowledgement', async () => {
+    const boundary = makeBluetoothBoundary()
+    let webNow = 100
+    const client = new BluetoothPodClient({ bluetooth: boundary.bluetooth, now: () => webNow })
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+
+    try {
+      render(<App hardwareClient={client} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Connect DAAANCE_LW' }))
+      await screen.findByText('Connected')
+      await waitFor(() => expect(screen.getByText('DAAANCE_LW 已连接')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+      fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+      await waitFor(() => expect(boundary.podRx.writeValueWithoutResponse).toHaveBeenLastCalledWith(
+        new TextEncoder().encode('START_COUNTDOWN'),
+      ))
+
+      act(() => notify(boundary.podTx, JSON.stringify({ event: 'COUNTDOWN_DONE', pod: 'left_wrist', t: 7 })))
+      const video = await screen.findByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+      Object.defineProperty(video, 'duration', { value: 18.66 })
+      fireEvent.loadedMetadata(video)
+
+      webNow = 5_000
+      video.currentTime = 2.5
+      fireEvent.timeUpdate(video)
+      await waitFor(() => expect(boundary.podRx.writeValueWithoutResponse).toHaveBeenLastCalledWith(
+        new TextEncoder().encode('FEEDBACK_ERROR'),
+      ))
+
+      webNow = 5_033
+      act(() => notify(boundary.podTx, JSON.stringify({
+        event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 8, feedback: 'ERROR', outputs: ['LED', 'VIBRATION'],
+      })))
+      fireEvent.click(screen.getByRole('button', { name: '退出训练' }))
+
+      const hardwareTest = screen.getByRole('region', { name: 'Hardware Test' })
+      expect(within(hardwareTest).getByText(/FEEDBACK_ERROR · sent 5000 ms · execution acknowledged/)).toBeInTheDocument()
+      expect(within(hardwareTest).getByText('FEEDBACK_EXECUTED · hardware 8 ms · received 5033 ms · latency 33 ms · LED, VIBRATION')).toBeInTheDocument()
+    } finally {
+      play.mockRestore()
+    }
+  })
+
+  it('uses the Bluetooth client web clock for a controller command and exactly one FEEDBACK_EXECUTED latency correlation', async () => {
+    const boundary = makeBluetoothBoundary()
+    let webNow = 1_000
+    const client = new BluetoothPodClient({ bluetooth: boundary.bluetooth, now: () => webNow })
+
+    render(<App hardwareClient={client} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect DAAANCE_LW' }))
+    expect(await screen.findByText('Connected')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('DAAANCE_LW 已连接')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+
+    const hardwareTest = screen.getByRole('region', { name: 'Hardware Test' })
+    fireEvent.click(within(hardwareTest).getByRole('button', { name: 'Error feedback' }))
+    await waitFor(() => expect(boundary.podRx.writeValueWithoutResponse).toHaveBeenCalledWith(
+      new TextEncoder().encode('FEEDBACK_ERROR'),
+    ))
+
+    webNow = 1_025
+    act(() => notify(boundary.podTx, JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 45, feedback: 'ERROR', outputs: ['LED'],
+    })))
+    act(() => notify(boundary.podTx, JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 45, feedback: 'ERROR', outputs: ['LED'],
+    })))
+
+    expect(within(hardwareTest).getByText(/FEEDBACK_ERROR · sent 1000 ms · execution acknowledged/)).toBeInTheDocument()
+    expect(within(hardwareTest).getByText('FEEDBACK_EXECUTED · hardware 45 ms · received 1025 ms · latency 25 ms · LED')).toBeInTheDocument()
+    expect(within(hardwareTest).getByText('FEEDBACK_EXECUTED · hardware 45 ms · received 1025 ms · command uncorrelated · LED')).toBeInTheDocument()
+  })
+
   it('runs the real left-wrist closed loop through the fake Bluetooth boundary while the other Pods stay Demo', async () => {
     const boundary = makeBluetoothBoundary()
     let receivedAt = 100

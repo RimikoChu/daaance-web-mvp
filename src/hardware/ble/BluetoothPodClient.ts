@@ -259,6 +259,10 @@ export class BluetoothPodClient {
     return { ...this.snapshot }
   }
 
+  getWebTimestamp(): number {
+    return this.now()
+  }
+
   private failureFrom(error: BluetoothPodClientError): BluetoothPodFailure {
     return { code: error.code, message: error.message }
   }

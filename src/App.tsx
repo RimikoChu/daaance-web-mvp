@@ -124,7 +124,7 @@ function Setup({ controller, feedbackMode, strictness, setFeedbackMode, setStric
         </button>)}
       </div>
       <div className="setup-note"><Activity size={18} /><span><strong>Mock IMU 已开启</strong>硬件未连接也可以完整体验动作检测。</span></div>
-      <HardwareTestPanel controller={controller} />
+      {import.meta.env.DEV && <HardwareTestPanel controller={controller} />}
       <button className="primary full" onClick={onStart}>开始舞蹈 <CirclePlay size={20} /></button>
     </section>
   </main>
@@ -167,6 +167,7 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const [feedbackMode, setFeedbackMode] = useState<TrainingMode>('accessibility')
   const [strictness, setStrictness] = useState<Strictness>('standard')
   const [results, setResults] = useState<TimingResult[]>([])
+  const webNow = useCallback(() => client.getWebTimestamp(), [client])
   const sendFeedbackError = useCallback((_eventId: string) => hardware.sendCommand('FEEDBACK_ERROR'), [hardware.sendCommand])
   const ignoreFeedbackError = useCallback((_eventId: string) => {}, [])
 
@@ -216,6 +217,7 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       feedbackMode={feedbackMode}
       strictness={strictness}
       onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : ignoreFeedbackError}
+      feedbackNow={webNow}
       onExit={() => setScreen('setup')}
       onFinish={value => { setResults(value); setScreen('results') }}
     />

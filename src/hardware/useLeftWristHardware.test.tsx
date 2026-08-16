@@ -28,6 +28,10 @@ class FakeClient {
     return this.unsubscribeSnapshot
   })
 
+  getWebTimestamp(): number {
+    return globalThis.performance.now()
+  }
+
   getSnapshot(): BluetoothPodSnapshot {
     return this.snapshot
   }
@@ -241,5 +245,57 @@ describe('useLeftWristHardware', () => {
     expect(controller.latestImu).toEqual(imuEvent(120))
     expect(controller.snapshot.firmware).toBe('0.1.7')
     expect(controller.recentEvents.map(event => event.type)).toEqual(['button-single-click', 'countdown-done'])
+  })
+
+  it('audits command attempts with unique web IDs and retains a bounded raw BLE event log', async () => {
+    const client = new FakeClient()
+    const bleSource = { addEvent: vi.fn(), clear: vi.fn() } as unknown as BLEMotionDataSource
+    let controller!: ReturnType<typeof useLeftWristHardware>
+
+    function Harness() {
+      controller = useLeftWristHardware(client, bleSource)
+      return null
+    }
+
+    render(<Harness />)
+    await act(async () => {
+      await controller.sendCommand('FEEDBACK_ERROR')
+      await controller.sendCommand('STOP_ALL')
+    })
+    act(() => {
+      for (let index = 0; index < 51; index += 1) {
+        client.emit({ type: 'button-single-click', pod: 'left_wrist', hardwareTimestamp: index, receivedAt: index })
+      }
+    })
+
+    expect(controller.commandAttempts).toEqual([
+      expect.objectContaining({ command: 'FEEDBACK_ERROR', status: 'sent', sentAt: expect.any(Number), commandId: expect.any(String) }),
+      expect.objectContaining({ command: 'STOP_ALL', status: 'sent', sentAt: expect.any(Number), commandId: expect.any(String) }),
+    ])
+    expect(controller.commandAttempts[0].commandId).not.toBe(controller.commandAttempts[1].commandId)
+    expect(controller.rawEventLog).toHaveLength(50)
+    expect(controller.rawEventLog[0]).toMatchObject({ type: 'button-single-click', receivedAt: 1 })
+    expect(controller.rawEventLog.at(-1)).toMatchObject({ type: 'button-single-click', receivedAt: 50 })
+  })
+
+  it('records failed command attempts without converting them into sent success', async () => {
+    const client = new FakeClient()
+    client.sendCommand.mockRejectedValueOnce(new Error('not connected'))
+    const bleSource = { addEvent: vi.fn(), clear: vi.fn() } as unknown as BLEMotionDataSource
+    let controller!: ReturnType<typeof useLeftWristHardware>
+
+    function Harness() {
+      controller = useLeftWristHardware(client, bleSource)
+      return null
+    }
+
+    render(<Harness />)
+    await act(async () => {
+      await expect(controller.sendCommand('FEEDBACK_ERROR')).rejects.toThrow('not connected')
+    })
+
+    expect(controller.commandAttempts).toEqual([
+      expect.objectContaining({ command: 'FEEDBACK_ERROR', status: 'failed', failureReason: 'not connected' }),
+    ])
   })
 })
