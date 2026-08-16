@@ -1,5 +1,27 @@
 import { LIMB_LABEL } from './choreography'
-import type { ChoreographyEvent, IMUSample, Limb, LimbSummary, SessionSummary, TimingResult } from './types'
+import type {
+  ChoreographyEvent,
+  IMUSample,
+  Limb,
+  LimbSummary,
+  SessionSummary,
+  TimingErrorSeverity,
+  TimingResult,
+} from './types'
+
+export const TIMING_ERROR_BANDS = {
+  low: 300,
+  medium: 600,
+} as const
+
+export const timingErrorSeverity = (result: TimingResult): TimingErrorSeverity => {
+  if (result.status === 'missed' || result.timingError === null) return 'high'
+
+  const absoluteError = Math.abs(result.timingError)
+  if (absoluteError <= TIMING_ERROR_BANDS.low) return 'low'
+  if (absoluteError <= TIMING_ERROR_BANDS.medium) return 'medium'
+  return 'high'
+}
 
 const energy = (sample: IMUSample) => {
   const accel = Math.hypot(sample.ax, sample.ay, sample.az - 1)

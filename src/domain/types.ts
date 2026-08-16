@@ -25,6 +25,7 @@ export interface IMUSample {
 }
 
 export type TimingStatus = 'correct' | 'early' | 'late' | 'missed'
+export type TimingErrorSeverity = 'low' | 'medium' | 'high'
 
 export interface TimingResult {
   event: ChoreographyEvent
