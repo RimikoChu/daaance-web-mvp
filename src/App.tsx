@@ -19,6 +19,11 @@ import { createTrainingSessionLedger } from './trainingReview/ledger'
 import type { TrainingSessionLedger, TrainingSessionSnapshot } from './trainingReview/types'
 
 type Screen = 'home' | 'setup' | 'countdown' | 'training' | 'results'
+interface ActiveTrainingSession {
+  token: number
+  ledger: TrainingSessionLedger
+}
+
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
 let trainingSessionSequence = 0
 
@@ -172,18 +177,20 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const [strictness, setStrictness] = useState<Strictness>('standard')
   const [results, setResults] = useState<TimingResult[]>([])
   const [completedSnapshot, setCompletedSnapshot] = useState<TrainingSessionSnapshot | null>(null)
-  const [activeLedger, setActiveLedger] = useState<TrainingSessionLedger | null>(null)
+  const [activeSession, setActiveSession] = useState<ActiveTrainingSession | null>(null)
+  const activeSessionTokenRef = useRef(0)
   const [reviewTimestamp, setReviewTimestamp] = useState<number | undefined>()
   const webNow = useCallback(() => client.getWebTimestamp(), [client])
   const sendFeedbackError = useCallback((_eventId: string) => hardware.sendCommand('FEEDBACK_ERROR'), [hardware.sendCommand])
 
   useEffect(() => {
-    if (screen !== 'training' || trainingSource.kind !== 'hybrid' || !activeLedger) return
+    if (screen !== 'training' || trainingSource.kind !== 'hybrid' || !activeSession) return
     return hardware.subscribeEvents(event => {
+      if (activeSessionTokenRef.current !== activeSession.token) return
       if (event.type !== 'feedback-executed') return
       try {
-        activeLedger.appendExecution({
-          id: `feedback-execution-${event.pod}-${event.hardwareTimestamp}-${event.receivedAt}`,
+        activeSession.ledger.appendExecution({
+          id: `feedback-execution-${event.pod}-${event.hardwareTimestamp}-${event.feedback}-${event.outputs.join('-')}`,
           pod: event.pod,
           hardwareTimestamp: event.hardwareTimestamp,
           receivedAt: event.receivedAt,
@@ -194,15 +201,17 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
         // Duplicate acknowledgements remain safely ignored by their stable event ID.
       }
     })
-  }, [activeLedger, hardware.subscribeEvents, screen, trainingSource.kind])
+  }, [activeSession, hardware.subscribeEvents, screen, trainingSource.kind])
 
   const startTraining = (source: MotionDataSource, shouldAutoStart: boolean) => {
     const ledger = createTrainingSessionLedger(
       `training-${Date.now()}-${++trainingSessionSequence}`,
       Date.now(),
     )
+    const token = activeSessionTokenRef.current + 1
+    activeSessionTokenRef.current = token
     setTrainingSource(source)
-    setActiveLedger(ledger)
+    setActiveSession({ token, ledger })
     setAutoStart(shouldAutoStart)
     setReviewTimestamp(undefined)
     setCompletedSnapshot(null)
@@ -249,11 +258,22 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       strictness={strictness}
       onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : undefined}
       feedbackNow={webNow}
-      sessionLedger={reviewTimestamp === undefined ? activeLedger ?? undefined : undefined}
-      onExit={() => { setActiveLedger(null); setScreen('setup') }}
+      sessionLedger={reviewTimestamp === undefined ? activeSession?.ledger : undefined}
+      onExit={() => {
+        activeSessionTokenRef.current += 1
+        setActiveSession(null)
+        setScreen('setup')
+      }}
       sessionSnapshot={reviewTimestamp === undefined ? undefined : completedSnapshot ?? undefined}
       initialReviewTimestamp={reviewTimestamp}
-      onFinish={(snapshot, value) => { setResults(value); setCompletedSnapshot(snapshot); setActiveLedger(null); setScreen('results') }}
+      onFinish={(snapshot, value) => {
+        if (!activeSession || activeSessionTokenRef.current !== activeSession.token) return
+        activeSessionTokenRef.current += 1
+        setResults(value)
+        setCompletedSnapshot(snapshot)
+        setActiveSession(null)
+        setScreen('results')
+      }}
     />
   }
   if (!completedSnapshot) return <Results results={results} snapshot={{ schemaVersion: '1.0.0', sessionId: 'empty', startedAt: 0, errors: [], commands: [], executions: [] }} onReviewTime={() => {}} onHome={() => setScreen('home')} onAgain={restartTraining} />

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bluetooth, CirclePlay, Pause, Volume2, Waves } from 'lucide-react'
 import demoDance from '../assets/demo-dance.mp4'
 import demoDancePoster from '../assets/demo-dance-poster.png'
@@ -64,6 +64,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   if (!sessionSnapshot && !sessionLedger && !reviewLedgerRef.current) reviewLedgerRef.current = createTrainingSession()
   const onFeedbackErrorRef = useRef(onFeedbackError)
   onFeedbackErrorRef.current = onFeedbackError
+  const sessionActiveRef = useRef(true)
   const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
   const pendingFeedbackReportsRef = useRef(new Set<Promise<void>>())
   if (!feedbackGuardRef.current) {
@@ -73,6 +74,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
       send: eventId => onFeedbackErrorRef.current?.(eventId),
     })
   }
+  useEffect(() => () => { sessionActiveRef.current = false }, [])
   const [learningMode, setLearningMode] = useState<LearningMode>('teaching')
   const [activeSegment, setActiveSegment] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -101,7 +103,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     const newErrors = detector.detect({
       event,
       samples,
-      receivedAt: Date.now(),
+      receivedAt: feedbackNow(),
     }).filter(error => reviewDeduplicatorRef.current.accept(error))
     if (!sessionSnapshot && newErrors.length > 0) {
       for (const error of newErrors) activeLedger?.appendError(error)
@@ -112,8 +114,9 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
       const report = feedbackGuardRef.current?.report(feedbackError.id)
       if (report) {
         const settled = report.then(command => {
-          if (command && !sessionSnapshot) activeLedger?.appendCommand(command)
-          if (command && !sessionSnapshot) setReviewLedgerRevision(revision => revision + 1)
+          if (!sessionActiveRef.current || !command || sessionSnapshot) return
+          activeLedger?.appendCommand(command)
+          setReviewLedgerRevision(revision => revision + 1)
         })
         pendingFeedbackReportsRef.current.add(settled)
         void settled.finally(() => pendingFeedbackReportsRef.current.delete(settled))
@@ -192,11 +195,13 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   }
 
   const finish = () => {
-    if (sessionSnapshot || finishedRef.current) return
+    if (!sessionActiveRef.current || sessionSnapshot || finishedRef.current) return
     finishedRef.current = true
     setPlaying(false)
     const completedResults = CHOREOGRAPHY.map(analyzeEvent)
-    const complete = () => onFinish(activeLedger!.snapshot(), completedResults)
+    const complete = () => {
+      if (sessionActiveRef.current) onFinish(activeLedger!.snapshot(), completedResults)
+    }
     const pendingFeedbackReports = [...pendingFeedbackReportsRef.current]
     if (pendingFeedbackReports.length === 0) {
       complete()
@@ -205,11 +210,16 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     void Promise.all(pendingFeedbackReports).then(complete)
   }
 
+  const exit = () => {
+    sessionActiveRef.current = false
+    onExit()
+  }
+
   return <main className="training-page soft-glass-theme">
     <header>
       <div className="logo"><span>Daaance!</span><i /></div>
       <div className="training-mode"><span className="live-dot" />{feedbackMode === 'accessibility' ? '无障碍模式' : '节奏教练模式'}</div>
-      <button className="text-button" onClick={onExit}>退出训练</button>
+      <button className="text-button" onClick={exit}>退出训练</button>
     </header>
     <div className="training-layout">
       <aside>

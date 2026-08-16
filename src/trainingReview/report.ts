@@ -39,6 +39,10 @@ export interface TrainingReport {
   rows: TrainingReportRow[]
 }
 
+export interface TrainingSessionExport extends TrainingSessionSnapshot {
+  reviewRanges: ReturnType<typeof clusterReviewRanges>
+}
+
 const LIMBS: MotionErrorEvent['limb'][] = ['left_wrist', 'right_wrist', 'left_ankle', 'right_ankle']
 const TYPES: MotionErrorType[] = ['timing', 'direction', 'range']
 
@@ -99,5 +103,12 @@ export function buildTrainingReport(snapshot: TrainingSessionSnapshot): Training
     countsByType,
     reviewRanges,
     rows,
+  }
+}
+
+export function buildTrainingExport(snapshot: TrainingSessionSnapshot): TrainingSessionExport {
+  return {
+    ...snapshot,
+    reviewRanges: clusterReviewRanges(snapshot.errors),
   }
 }

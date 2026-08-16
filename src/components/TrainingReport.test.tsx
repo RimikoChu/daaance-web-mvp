@@ -44,20 +44,39 @@ describe('TrainingReport', () => {
     expect(screen.getByRole('button', { name: '导出 JSON' })).toHaveClass('report-export')
   })
 
-  it('exports the exact raw snapshot only on click, then cleans up its temporary download URL and anchor', async () => {
+  it('exports the exact serializable snapshot with derived review ranges only on click, then cleans up its temporary download URL and anchor', async () => {
     const createObjectURL = vi.fn((_blob: Blob) => 'blob:session')
     const revokeObjectURL = vi.fn()
     let downloadedAnchor: HTMLAnchorElement | undefined
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { downloadedAnchor = this })
+    const exportSnapshot: TrainingSessionSnapshot = {
+      ...snapshot,
+      errors: [...snapshot.errors, {
+        ...snapshot.errors[0],
+        id: 'left-range',
+        timestamp: 3_000,
+        receivedAt: 3_010,
+      }],
+    }
+    const expectedPayload = {
+      ...exportSnapshot,
+      reviewRanges: [{
+        limb: 'left_wrist',
+        start: 1_000,
+        end: 3_000,
+        errorIds: ['left', 'left-range'],
+        emphasis: 'standard',
+      }],
+    }
     Object.assign(URL, { createObjectURL, revokeObjectURL })
-    render(<TrainingReport snapshot={snapshot} onReviewTime={vi.fn()} onAgain={vi.fn()} onHome={vi.fn()} />)
+    render(<TrainingReport snapshot={exportSnapshot} onReviewTime={vi.fn()} onAgain={vi.fn()} onHome={vi.fn()} />)
 
     expect(createObjectURL).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
 
     expect(createObjectURL).toHaveBeenCalledOnce()
     const blob = createObjectURL.mock.calls[0][0] as Blob
-    expect(await blob.text()).toBe(JSON.stringify(snapshot, null, 2))
+    expect(await blob.text()).toBe(JSON.stringify(expectedPayload, null, 2))
     expect(click).toHaveBeenCalledOnce()
     expect(downloadedAnchor?.download).toBe('daaance-session-session export.json')
     expect(document.querySelector(`a[download="${downloadedAnchor?.download}"]`)).not.toBeInTheDocument()

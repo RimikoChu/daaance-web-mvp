@@ -1,5 +1,5 @@
 import { RotateCcw } from 'lucide-react'
-import { buildTrainingReport } from '../trainingReview/report'
+import { buildTrainingExport, buildTrainingReport } from '../trainingReview/report'
 import type { MotionErrorEvent, TrainingSessionSnapshot } from '../trainingReview/types'
 
 export interface TrainingReportProps {
@@ -46,7 +46,7 @@ const feedbackDetails = (feedback: ReturnType<typeof buildTrainingReport>['rows'
 export function TrainingReport({ snapshot, onReviewTime, onAgain, onHome }: TrainingReportProps) {
   const report = buildTrainingReport(snapshot)
   const exportJson = () => {
-    const json = JSON.stringify(snapshot, null, 2)
+    const json = JSON.stringify(buildTrainingExport(snapshot), null, 2)
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
     const anchor = document.createElement('a')
     anchor.href = url

@@ -689,6 +689,14 @@ describe('Daaance training flow', () => {
         feedback: 'ERROR',
         outputs: ['LED', 'VIBRATION'],
       }))
+      act(() => client.publishEvent({
+        type: 'feedback-executed',
+        pod: 'left_wrist',
+        hardwareTimestamp: 42,
+        receivedAt: 5_034,
+        feedback: 'ERROR',
+        outputs: ['LED', 'VIBRATION'],
+      }))
       fireEvent.ended(video)
 
       expect(await screen.findByRole('heading', { name: '训练复盘报告' })).toBeInTheDocument()
@@ -696,13 +704,58 @@ describe('Daaance training flow', () => {
       expect(within(leftWristRow).getByText('Execution acknowledged')).toBeInTheDocument()
       expect(within(leftWristRow).getByText(/sent 5000 ms.*latency 33 ms/i)).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: '导出 JSON' }))
-      expect(JSON.parse(await (createObjectURL.mock.calls[0]?.[0] as Blob).text())).toMatchObject({
-        commands: [expect.objectContaining({ errorEventId: 'imu-c1-timing', sentAt: 5_000, status: 'sent' })],
-        executions: [expect.objectContaining({ pod: 'left_wrist', hardwareTimestamp: 42, receivedAt: 5_033 })],
+      const exported = JSON.parse(await (createObjectURL.mock.calls[0]?.[0] as Blob).text())
+      expect(exported).toMatchObject({
+        errors: expect.arrayContaining([expect.objectContaining({ id: 'imu-c1-timing', receivedAt: 5_000 })]),
+        commands: expect.arrayContaining([expect.objectContaining({ errorEventId: 'imu-c1-timing', sentAt: 5_000, status: 'sent' })]),
+        executions: expect.arrayContaining([expect.objectContaining({ pod: 'left_wrist', hardwareTimestamp: 42, receivedAt: 5_033 })]),
       })
+      expect(exported.executions).toHaveLength(1)
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:hybrid-session')
     } finally {
       download.mockRestore()
+      play.mockRestore()
+    }
+  })
+
+  it('ignores a deferred feedback completion from an exited session after a new real session begins', async () => {
+    const client = new FakeHardwareClient()
+    let resolveFeedbackWrite!: () => void
+    const feedbackWrite = new Promise<void>(resolve => { resolveFeedbackWrite = resolve })
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    client.sendCommand.mockImplementation(command => command === 'FEEDBACK_ERROR' ? feedbackWrite : Promise.resolve())
+
+    try {
+      render(<App hardwareClient={client} />)
+      fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+      fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+      act(() => client.publishEvent({ type: 'countdown-done', pod: 'left_wrist', hardwareTimestamp: 1, receivedAt: 1_000 }))
+      const firstVideo = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+      Object.defineProperty(firstVideo, 'duration', { value: 18.66 })
+      fireEvent.loadedMetadata(firstVideo)
+      client.webNow = 5_000
+      firstVideo.currentTime = 2.5
+      fireEvent.timeUpdate(firstVideo)
+      await waitFor(() => expect(client.sendCommand).toHaveBeenLastCalledWith('FEEDBACK_ERROR'))
+      fireEvent.ended(firstVideo)
+
+      fireEvent.click(screen.getByRole('button', { name: '退出训练' }))
+      expect(screen.getByText('选择你的训练方式')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+      act(() => client.publishEvent({ type: 'countdown-done', pod: 'left_wrist', hardwareTimestamp: 2, receivedAt: 6_000 }))
+      const secondVideo = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+      Object.defineProperty(secondVideo, 'duration', { value: 18.66 })
+      fireEvent.loadedMetadata(secondVideo)
+
+      await act(async () => {
+        resolveFeedbackWrite()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(screen.getByLabelText('18.66 秒舞蹈示范')).toBe(secondVideo)
+      expect(screen.queryByRole('heading', { name: '训练复盘报告' })).not.toBeInTheDocument()
+    } finally {
       play.mockRestore()
     }
   })
