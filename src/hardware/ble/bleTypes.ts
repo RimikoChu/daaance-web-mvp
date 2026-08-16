@@ -37,11 +37,22 @@ export interface CountdownDonePacket {
   t: number
 }
 
+export type DaaanceFeedbackOutput = 'LED' | 'VIBRATION'
+
+export interface FeedbackExecutedPacket {
+  event: 'FEEDBACK_EXECUTED'
+  pod: DaaancePodId
+  t: number
+  feedback: 'ERROR'
+  outputs: DaaanceFeedbackOutput[]
+}
+
 export type BluetoothPodPacket =
   | HelloPacket
   | ImuDataPacket
   | ButtonSingleClickPacket
   | CountdownDonePacket
+  | FeedbackExecutedPacket
 
 export type BluetoothPodEvent =
   | {
@@ -73,4 +84,12 @@ export type BluetoothPodEvent =
     pod: 'left_wrist'
     hardwareTimestamp: number
     receivedAt: number
+  }
+  | {
+    type: 'feedback-executed'
+    pod: 'left_wrist'
+    hardwareTimestamp: number
+    receivedAt: number
+    feedback: 'ERROR'
+    outputs: DaaanceFeedbackOutput[]
   }

@@ -63,6 +63,44 @@ describe('parseBlePacket', () => {
     })
   })
 
+  it('normalizes the exact FEEDBACK_EXECUTED acknowledgement with both clocks', () => {
+    expect(parseBlePacket(
+      '{"event":"FEEDBACK_EXECUTED","pod":"left_wrist","t":123456,"feedback":"ERROR","outputs":["LED","VIBRATION"]}',
+      987.5,
+    )).toEqual({
+      kind: 'event',
+      event: {
+        type: 'feedback-executed',
+        pod: 'left_wrist',
+        hardwareTimestamp: 123456,
+        receivedAt: 987.5,
+        feedback: 'ERROR',
+        outputs: ['LED', 'VIBRATION'],
+      },
+    })
+  })
+
+  it.each([
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', feedback: 'ERROR', outputs: ['LED', 'VIBRATION'] },
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: '123456', feedback: 'ERROR', outputs: ['LED', 'VIBRATION'] },
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, outputs: ['LED', 'VIBRATION'] },
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'SUCCESS', outputs: ['LED', 'VIBRATION'] },
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs: [] },
+    { event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs: 'LED' },
+  ])('rejects invalid FEEDBACK_EXECUTED fields: %o', (packet) => {
+    expect(parseBlePacket(JSON.stringify(packet), 987.5)).toEqual({ kind: 'ignored', reason: 'invalid' })
+  })
+
+  it.each([
+    [['MOTOR']],
+    [['LED', 'MOTOR']],
+    [[1]],
+  ])('rejects unsupported FEEDBACK_EXECUTED outputs: %o', (outputs) => {
+    expect(parseBlePacket(JSON.stringify({
+      event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs,
+    }), 987.5)).toEqual({ kind: 'ignored', reason: 'invalid' })
+  })
+
   it('ignores malformed JSON without logging', () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
 
@@ -98,7 +136,12 @@ describe('parseBlePacket', () => {
 
   it('continues parsing valid packets after malformed input', () => {
     expect(parseBlePacket('{bad', 10)).toEqual({ kind: 'ignored', reason: 'malformed' })
-    expect(parseBlePacket(JSON.stringify({ event: 'COUNTDOWN_DONE', pod: 'left_wrist', t: 11 }), 12))
-      .toMatchObject({ kind: 'event', event: { type: 'countdown-done', hardwareTimestamp: 11, receivedAt: 12 } })
+    expect(parseBlePacket(
+      '{"event":"FEEDBACK_EXECUTED","pod":"left_wrist","t":123456,"feedback":"ERROR","outputs":["LED","VIBRATION"]}',
+      12,
+    )).toMatchObject({
+      kind: 'event',
+      event: { type: 'feedback-executed', hardwareTimestamp: 123456, receivedAt: 12 },
+    })
   })
 })

@@ -82,6 +82,8 @@ export function useLeftWristHardware(
           imuReceivedAt.current = []
           setSnapshot(current => ({ ...current, imuHz: 0 }))
         }, IMU_RATE_WINDOW_MS)
+      } else if (event.type === 'feedback-executed') {
+        setSnapshot(current => ({ ...current, lastPacketAt: event.receivedAt }))
       } else {
         setSnapshot(current => ({
           ...current,

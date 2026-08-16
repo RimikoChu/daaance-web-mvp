@@ -1,4 +1,9 @@
-import type { BluetoothPodEvent, BluetoothPodPacket, DaaancePodId } from './bleTypes'
+import type {
+  BluetoothPodEvent,
+  BluetoothPodPacket,
+  DaaanceFeedbackOutput,
+  DaaancePodId,
+} from './bleTypes'
 
 type IgnoredParseResult = {
   kind: 'ignored'
@@ -20,6 +25,13 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isPodId = (value: unknown): value is DaaancePodId =>
   typeof value === 'string' && podIds.includes(value as DaaancePodId)
 
+const feedbackOutputs: readonly DaaanceFeedbackOutput[] = ['LED', 'VIBRATION']
+
+const isFeedbackOutputs = (value: unknown): value is DaaanceFeedbackOutput[] =>
+  Array.isArray(value)
+  && value.length > 0
+  && value.every((output) => typeof output === 'string' && feedbackOutputs.includes(output as DaaanceFeedbackOutput))
+
 const isKnownPacket = (value: Record<string, unknown>): value is Record<string, unknown> & BluetoothPodPacket => {
   if (!isPodId(value.pod)) return false
 
@@ -32,6 +44,10 @@ const isKnownPacket = (value: Record<string, unknown>): value is Record<string, 
     case 'BUTTON_SINGLE_CLICK':
     case 'COUNTDOWN_DONE':
       return isFiniteNumber(value.t)
+    case 'FEEDBACK_EXECUTED':
+      return isFiniteNumber(value.t)
+        && value.feedback === 'ERROR'
+        && isFeedbackOutputs(value.outputs)
     default:
       return false
   }
@@ -48,7 +64,7 @@ export function parseBlePacket(value: string, receivedAt: number): BlePacketPars
 
   if (!isRecord(parsed)) return { kind: 'ignored', reason: 'invalid' }
 
-  if (typeof parsed.event === 'string' && !['HELLO', 'IMU_DATA', 'BUTTON_SINGLE_CLICK', 'COUNTDOWN_DONE'].includes(parsed.event)) {
+  if (typeof parsed.event === 'string' && !['HELLO', 'IMU_DATA', 'BUTTON_SINGLE_CLICK', 'COUNTDOWN_DONE', 'FEEDBACK_EXECUTED'].includes(parsed.event)) {
     console.debug('[Daaance BLE] Unknown event', parsed.event)
     return { kind: 'ignored', reason: 'unknown' }
   }
@@ -89,6 +105,16 @@ export function parseBlePacket(value: string, receivedAt: number): BlePacketPars
         event: {
           type: 'countdown-done', pod: parsed.pod,
           hardwareTimestamp: parsed.t, receivedAt,
+        },
+      }
+    case 'FEEDBACK_EXECUTED':
+      return {
+        kind: 'event',
+        event: {
+          type: 'feedback-executed', pod: parsed.pod,
+          hardwareTimestamp: parsed.t, receivedAt,
+          feedback: parsed.feedback,
+          outputs: parsed.outputs,
         },
       }
   }

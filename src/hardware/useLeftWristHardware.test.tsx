@@ -204,4 +204,42 @@ describe('useLeftWristHardware', () => {
     expect(addEvent).toHaveBeenCalledWith(imuEvent(400))
     expect(screen.getByText('400')).toBeInTheDocument()
   })
+
+  it('delivers feedback acknowledgements to subscribers without projecting them as telemetry or discrete events', () => {
+    const client = new FakeClient()
+    const addEvent = vi.fn()
+    const bleSource = { addEvent, clear: vi.fn() } as unknown as BLEMotionDataSource
+    let controller!: ReturnType<typeof useLeftWristHardware>
+
+    function Harness() {
+      controller = useLeftWristHardware(client, bleSource)
+      return null
+    }
+
+    render(<Harness />)
+    act(() => {
+      client.emit({ type: 'hello', pod: 'left_wrist', firmware: '0.1.7', receivedAt: 100 })
+      client.emit(imuEvent(120))
+      client.emit({ type: 'button-single-click', pod: 'left_wrist', hardwareTimestamp: 33, receivedAt: 130 })
+      client.emit({ type: 'countdown-done', pod: 'left_wrist', hardwareTimestamp: 44, receivedAt: 140 })
+    })
+    const feedbackAcknowledgement: Extract<BluetoothPodEvent, { type: 'feedback-executed' }> = {
+      type: 'feedback-executed',
+      pod: 'left_wrist',
+      hardwareTimestamp: 123456,
+      receivedAt: 150,
+      feedback: 'ERROR',
+      outputs: ['LED', 'VIBRATION'],
+    }
+    const received: BluetoothPodEvent[] = []
+    controller.subscribeEvents(event => received.push(event))
+
+    act(() => client.emit(feedbackAcknowledgement))
+
+    expect(received).toEqual([feedbackAcknowledgement])
+    expect(addEvent).toHaveBeenCalledOnce()
+    expect(controller.latestImu).toEqual(imuEvent(120))
+    expect(controller.snapshot.firmware).toBe('0.1.7')
+    expect(controller.recentEvents.map(event => event.type)).toEqual(['button-single-click', 'countdown-done'])
+  })
 })
