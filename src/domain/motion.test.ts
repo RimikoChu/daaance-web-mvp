@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeTiming, detectPeak, summarizeSession } from './motion'
+import { analyzeTiming, detectPeak, summarizeSession, timingErrorSeverity } from './motion'
 import type { ChoreographyEvent, IMUSample, TimingResult } from './types'
 
 const target: ChoreographyEvent = { id: 'e1', time: 5000, limb: 'RIGHT_ANKLE', cue: 'STEP', accent: false }
@@ -29,6 +29,33 @@ describe('motion timing analysis', () => {
 
   it('marks absent motion as missed', () => {
     expect(analyzeTiming(target, [], 250).status).toBe('missed')
+  })
+
+  it.each([
+    [-300, 'early', 'low'],
+    [300, 'late', 'low'],
+    [-301, 'early', 'medium'],
+    [301, 'late', 'medium'],
+    [-600, 'early', 'medium'],
+    [600, 'late', 'medium'],
+    [-601, 'early', 'high'],
+    [601, 'late', 'high'],
+  ] as const)('maps a %sms timing error to %s severity', (timingError, status, severity) => {
+    expect(timingErrorSeverity({
+      event: target,
+      actualTime: target.time + timingError,
+      timingError,
+      status,
+    })).toBe(severity)
+  })
+
+  it('maps a missed timing result with no timing error to high severity', () => {
+    expect(timingErrorSeverity({
+      event: target,
+      actualTime: null,
+      timingError: null,
+      status: 'missed',
+    })).toBe('high')
   })
 
   it('summarizes accuracy and the weakest limb', () => {

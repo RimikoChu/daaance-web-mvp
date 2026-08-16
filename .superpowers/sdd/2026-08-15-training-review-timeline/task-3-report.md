@@ -39,3 +39,22 @@ Complete
 - `npm test` — 17 test files, 151 tests passed.
 - `npm run build` — `tsc -b && vite build` exited successfully.
 - `git diff --check` — passed.
+
+## Review round 1: timing-severity boundaries
+
+Added regression coverage for the centralized Timing-error severity bands:
+
+- `-300ms` and `+300ms` are `low`.
+- `-301ms` and `+301ms` through `-600ms` and `+600ms` are `medium`.
+- `-601ms` and `+601ms` are `high`.
+- A `missed` result with a null timing error is `high`.
+
+The existing mapper satisfied every boundary, so this round makes no
+production-code change.
+
+### Verification
+
+- `npm test -- src/domain/motion.test.ts` — 15 tests passed.
+- `npm test` — 17 test files, 160 tests passed.
+- `npm run build` — `tsc -b && vite build` exited successfully.
+- `git diff --check` — passed.
