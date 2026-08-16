@@ -34,6 +34,18 @@ describe('Studio', () => {
     expect(within(row).getByLabelText('关键拍部位')).toHaveValue('left_wrist')
   })
 
+  it('offers a visible button that marks the current video time', async () => {
+    render(<Studio client={client()} createId={() => 'button-beat'} />)
+    const video = screen.getByLabelText('Studio 18.66 秒舞蹈示范') as HTMLVideoElement
+    await screen.findByText('0 个关键拍')
+    Object.defineProperty(video, 'currentTime', { value: 6.789, writable: true })
+
+    fireEvent.click(screen.getByRole('button', { name: '添加当前关键拍' }))
+
+    expect(screen.getByText('6.79s')).toBeInTheDocument()
+    expect(screen.getByTestId('beat-button-beat')).toHaveAttribute('aria-current', 'true')
+  })
+
   it('does not mark from editable controls and selects a nearby beat instead of duplicating', async () => {
     render(<Studio client={client(timeline([
       { id: 'existing', timeMs: 3200, intensity: 'light', limb: 'right_wrist' },

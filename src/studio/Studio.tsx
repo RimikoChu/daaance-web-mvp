@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CirclePlay, Pause, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { CirclePlay, Pause, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
 import demoDance from '../assets/demo-dance.mp4'
 import demoDancePoster from '../assets/demo-dance-poster.png'
 import {
@@ -74,22 +74,27 @@ export function Studio({
     requestAnimationFrame(() => rowRefs.current.get(id)?.scrollIntoView?.({ block: 'nearest' }))
   }
 
+  const markCurrentBeat = () => {
+    const video = videoRef.current
+    if (!video) return
+    const timeMs = Math.max(0, Math.min(18660, Math.round(video.currentTime * 100) * 10))
+    const nearby = draft.beats.find(beat => Math.abs(beat.timeMs - timeMs) <= 100)
+    if (nearby) {
+      selectBeat(nearby.id)
+      setMessage(`${formatTime(nearby.timeMs)} 已有关键拍。`)
+      return
+    }
+    const beat: KeyBeat = { id: createId(), timeMs, intensity: 'medium', limb: 'left_wrist' }
+    setDraft(current => ({ ...current, beats: [...current.beats, beat].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id)) }))
+    selectBeat(beat.id)
+    setMessage(`已添加 ${formatTime(timeMs)} 关键拍。`)
+  }
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || event.repeat || isEditableTarget(event.target)) return
-      const video = videoRef.current
-      if (!video) return
       event.preventDefault()
-      const timeMs = Math.max(0, Math.min(18660, Math.round(video.currentTime * 100) * 10))
-      const nearby = draft.beats.find(beat => Math.abs(beat.timeMs - timeMs) <= 100)
-      if (nearby) {
-        selectBeat(nearby.id)
-        return
-      }
-      const beat: KeyBeat = { id: createId(), timeMs, intensity: 'medium', limb: 'left_wrist' }
-      setDraft(current => ({ ...current, beats: [...current.beats, beat].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id)) }))
-      selectBeat(beat.id)
-      setMessage(`已添加 ${formatTime(timeMs)} 关键拍。`)
+      markCurrentBeat()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -139,6 +144,7 @@ export function Studio({
     <header className="studio-header">
       <div><span className="studio-kicker">Daaance! Studio</span><h1>关键拍编辑器</h1><p>播放视频，按空格快速标记当前时刻。</p></div>
       <div className="studio-actions">
+        <button className="studio-mark-action" onClick={markCurrentBeat}><Plus size={17} /> 添加当前关键拍</button>
         <button className="secondary" onClick={reset}><RotateCcw size={16} /> Reset to default</button>
         <button className="primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? '同步中…' : '保存并同步'}</button>
       </div>
