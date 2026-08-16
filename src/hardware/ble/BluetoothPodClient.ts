@@ -110,13 +110,16 @@ export class BluetoothPodClient {
     if (!value) return
 
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    this.receiveBuffer += this.textDecoder.decode(bytes, { stream: true })
+    const chunk = this.textDecoder.decode(bytes, { stream: true })
+    console.debug('[BLE chunk]', JSON.stringify(chunk))
+    this.receiveBuffer += chunk
 
     let newlineIndex = this.receiveBuffer.indexOf('\n')
     while (newlineIndex !== -1) {
       const line = this.receiveBuffer.slice(0, newlineIndex).trim()
       this.receiveBuffer = this.receiveBuffer.slice(newlineIndex + 1)
       if (line) {
+        console.debug('[BLE line]', line)
         const result = parseBlePacket(line, this.now())
         if (result.kind === 'event') {
           for (const listener of this.listeners) listener(result.event)

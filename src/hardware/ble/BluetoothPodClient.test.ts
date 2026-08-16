@@ -209,6 +209,23 @@ describe('BluetoothPodClient discovery and notifications', () => {
     }))
   })
 
+  it('logs every received BLE chunk and only logs a line after newline framing completes it', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })
+    await client.connect()
+
+    notify(harness.podTx, '{"event":"BUTTON_SINGLE_CLICK",')
+    expect(debug).toHaveBeenCalledWith('[BLE chunk]', JSON.stringify('{"event":"BUTTON_SINGLE_CLICK",'))
+    expect(debug).not.toHaveBeenCalledWith('[BLE line]', expect.anything())
+
+    notify(harness.podTx, '"pod":"LW","t":1}\n')
+    expect(debug).toHaveBeenCalledWith('[BLE chunk]', JSON.stringify('"pod":"LW","t":1}\n'))
+    expect(debug).toHaveBeenCalledWith('[BLE line]', '{"event":"BUTTON_SINGLE_CLICK","pod":"LW","t":1}')
+
+    debug.mockRestore()
+  })
+
   it('emits every complete line from one notification and retains only the trailing fragment', async () => {
     const harness = makeBluetoothHarness()
     const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })
@@ -293,8 +310,8 @@ describe('BluetoothPodClient discovery and notifications', () => {
       feedback: 'ERROR', outputs: ['LED', 'VIBRATION'],
     }))
 
-    expect(debug).toHaveBeenCalledOnce()
     expect(debug).toHaveBeenCalledWith('[Daaance BLE] Invalid event', 'FEEDBACK_EXECUTED')
+    expect(debug.mock.calls.filter(([message]) => message === '[Daaance BLE] Invalid event')).toHaveLength(1)
     expect(listener).toHaveBeenCalledOnce()
     expect(listener).toHaveBeenCalledWith({
       type: 'feedback-executed',
