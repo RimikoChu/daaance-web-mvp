@@ -10,7 +10,8 @@ import { createFeedbackGuard } from '../trainingFeedback'
 import { TrainingTimeline } from './TrainingTimeline'
 import { REVIEW_SEEK_PREROLL_MS } from '../trainingReview/constants'
 import { createErrorDeduplicator } from '../trainingReview/deduplicateErrors'
-import { createDemoDetector, createImuTimingDetector } from '../trainingReview/detectors'
+import { detectValidatedMotionErrors, createDemoDetector, createImuTimingDetector } from '../trainingReview/detectors'
+import type { DetectorDiagnostic } from '../trainingReview/detectors'
 import { clusterReviewRanges } from '../trainingReview/clusterReviewRanges'
 import { createTrainingSessionLedger } from '../trainingReview/ledger'
 import type { TrainingSessionLedger, TrainingSessionSnapshot } from '../trainingReview/types'
@@ -65,6 +66,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   const onFeedbackErrorRef = useRef(onFeedbackError)
   onFeedbackErrorRef.current = onFeedbackError
   const sessionActiveRef = useRef(true)
+  const reportedDetectorDiagnosticsRef = useRef(new Set<DetectorDiagnostic>())
   const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
   const pendingFeedbackReportsRef = useRef(new Set<Promise<void>>())
   if (!feedbackGuardRef.current) {
@@ -103,10 +105,14 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     const detector = source.kind === 'mock' || (source.kind === 'hybrid' && event.limb !== 'LEFT_WRIST')
       ? createDemoDetector()
       : createImuTimingDetector(strictness)
-    const newErrors = detector.detect({
+    const newErrors = detectValidatedMotionErrors(detector, {
       event,
       samples,
       receivedAt: feedbackNow(),
+    }, diagnostic => {
+      if (reportedDetectorDiagnosticsRef.current.has(diagnostic)) return
+      reportedDetectorDiagnosticsRef.current.add(diagnostic)
+      console.debug(`[Daaance training review] Ignored ${diagnostic === 'detector-threw' ? 'detector failure' : 'invalid detector output'}.`)
     }).filter(error => reviewDeduplicatorRef.current.accept(error))
     if (!sessionSnapshot && newErrors.length > 0) {
       for (const error of newErrors) activeLedger?.appendError(error)
