@@ -6,6 +6,10 @@ Add an honest, database-ready training review layer to the current Daaance demo.
 
 This phase remains a local/browser demo. It does not add PDF generation, cloud storage, a database, accounts, camera analysis, or a new Direction/Range algorithm.
 
+## Hardware Debug acceptance
+
+Extend the existing Hardware Test UI without changing the frozen BLE v0.1 protocol or duplicating the App-level adapter. The development-only panel connects/disconnects only `DAAANCE_LW`, reports the truthful BLE state, renders live IMU and `BUTTON_SINGLE_CLICK`, and exposes the existing five raw UTF-8 commands only. It also shows `FEEDBACK_EXECUTED` acknowledgements and a bounded raw BLE event log for field diagnosis. Each attempted command receives a unique web `commandId` with sent time; acknowledgements show ACK receive time and derived latency when correlation is possible. The other three Pods remain explicitly Mock. No RGB commands, press/release events, STATUS UUID, fake Bluetooth API, or renamed device/event/command identifiers are introduced.
+
 ## Product semantics
 
 - All four Pods are continuously active during a dance.

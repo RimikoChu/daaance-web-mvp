@@ -250,10 +250,15 @@ Commit: `feat: stream continuous four limb motion data`
 - Modify: `src/trainingFeedback.test.ts`
 - Create: `src/trainingReview/feedbackCorrelation.ts`
 - Test: `src/trainingReview/feedbackCorrelation.test.ts`
+- Modify: `src/hardware/useLeftWristHardware.ts`
+- Modify: `src/hardware/useLeftWristHardware.test.tsx`
+- Modify: `src/hardware/HardwareTestPanel.tsx`
+- Modify: `src/hardware/HardwareTestPanel.test.tsx`
 
 **Interfaces:**
 - Extend `createFeedbackGuard` so `report(errorEvent)` returns a `FeedbackCommandEvent | undefined` while preserving identity deduplication and cooldown.
 - Produce `correlateFeedback(errors, commands, executions)` for report rows and latency.
+- Keep the existing App-level BLE adapter as the sole real-hardware owner and expose a bounded raw event log plus command-attempt records for the development Hardware Debug panel.
 
 - [ ] **Step 1: Write command-audit RED tests**
 
@@ -274,6 +279,8 @@ Preserve best-effort training analysis while returning a serializable record for
 Match an ACK to the closest preceding sent command for the same Pod inside a bounded correlation window. Compute `receivedAt - sentAt`; represent absent ACK as `execution-unconfirmed`; keep duplicate/out-of-order ACK handling deterministic.
 
 - [ ] **Step 5: Verify and commit**
+
+Before committing, extend the existing Hardware Test panel (development UI only) with Connect/Disconnect `DAAANCE_LW`, truthful connection state, live IMU, `BUTTON_SINGLE_CLICK`, the existing five commands, `FEEDBACK_EXECUTED`, unique `commandId`, sent/ACK timestamps, latency when correlated, and a bounded raw BLE event log. Keep all protocol names exact and leave the other three Pods explicitly Mock. Do not add RGB, press/release, STATUS UUID, or component-owned Bluetooth code.
 
 Run: `npm test -- src/trainingFeedback.test.ts src/trainingReview/feedbackCorrelation.test.ts`
 
