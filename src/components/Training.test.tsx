@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHOREOGRAPHY } from '../domain/choreography'
 import { MockMotionDataSource } from '../domain/mockMotionDataSource'
 import type { ChoreographyEvent, IMUSample, MotionDataSource, TimingStatus } from '../domain/types'
+import * as trainingLedger from '../trainingReview/ledger'
 import { reviewSeekDestination, Training } from './Training'
 
 vi.mock('../domain/mockMotionDataSource', () => ({
@@ -289,5 +290,27 @@ describe('Training', () => {
     expect(screen.getByText('本拍重点 · 左手腕')).toBeInTheDocument()
     expect(screen.queryByText('动作中')).not.toBeInTheDocument()
     expect(screen.getAllByText('Demo')).toHaveLength(4)
+  })
+
+  it('derives review markers from a stable ledger and creates an empty ledger for a new Training session', () => {
+    const createLedger = vi.spyOn(trainingLedger, 'createTrainingSessionLedger')
+    const source = createSource()
+    const props = { source, feedbackMode: 'accessibility' as const, strictness: 'standard' as const, onFinish: vi.fn(), onExit: vi.fn() }
+    const { rerender } = render(<Training key="session-one" {...props} />)
+    const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+    Object.defineProperty(video, 'currentTime', { value: 2.5, writable: true })
+
+    fireEvent.timeUpdate(video)
+
+    expect(createLedger).toHaveBeenCalledTimes(1)
+    const firstLedger = createLedger.mock.results[0]?.value
+    expect(firstLedger?.snapshot().errors).toHaveLength(3)
+    expect(screen.getByRole('button', { name: /left wrist.*timing.*demo-generated/i })).toBeInTheDocument()
+
+    rerender(<Training key="session-two" {...props} />)
+
+    expect(createLedger).toHaveBeenCalledTimes(2)
+    expect(createLedger.mock.results[1]?.value.snapshot().errors).toEqual([])
+    expect(screen.queryByRole('button', { name: /demo-generated/i })).not.toBeInTheDocument()
   })
 })

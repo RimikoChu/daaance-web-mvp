@@ -49,3 +49,15 @@ Complete
 
 Frozen BLE files and the pre-existing plan/design-spec edits are excluded from
 this task commit.
+
+## Review round 1: ledger ownership correction
+
+Review found that Training maintained a separate `reviewErrors` presentation
+array instead of using the append-only session ledger. Training now creates one
+stable ledger for each mounted session, appends only post-dedup detector errors,
+and derives Timeline markers and review ranges exclusively from
+`ledger.snapshot().errors`. A revision signal only refreshes the derived view;
+it is not a second event store. The regression creates a Demo marker, verifies
+the ledger holds the three source events, then mounts a new Training session and
+verifies its new ledger and timeline are empty. Focused tests passed 27/27;
+the serial full suite passed 20 files / 189 tests; build and diff checks passed.
