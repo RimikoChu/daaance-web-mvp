@@ -81,6 +81,7 @@ export function useLeftWristHardware(
   useEffect(() => {
     const unsubscribe = client.subscribe(event => {
       setRawEventLog(current => [...current, event].slice(-MAX_RAW_EVENTS))
+      if (event.pod !== 'left_wrist') return
       if (event.type === 'imu') {
         bleSource.addEvent(event)
         setLatestImu(event)

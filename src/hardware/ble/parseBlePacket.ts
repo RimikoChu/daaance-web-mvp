@@ -15,6 +15,12 @@ export type BlePacketParseResult =
   | IgnoredParseResult
 
 const podIds: readonly DaaancePodId[] = ['left_wrist', 'right_wrist', 'left_ankle', 'right_ankle']
+const podAliases: Readonly<Record<string, DaaancePodId>> = {
+  LW: 'left_wrist',
+  RW: 'right_wrist',
+  LA: 'left_ankle',
+  RA: 'right_ankle',
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -63,25 +69,28 @@ export function parseBlePacket(value: string, receivedAt: number): BlePacketPars
   }
 
   if (!isRecord(parsed)) return { kind: 'ignored', reason: 'invalid' }
+  const packet: Record<string, unknown> = typeof parsed.pod === 'string' && podAliases[parsed.pod]
+    ? { ...parsed, pod: podAliases[parsed.pod] }
+    : parsed
 
-  if (typeof parsed.event === 'string' && !['HELLO', 'IMU_DATA', 'BUTTON_SINGLE_CLICK', 'COUNTDOWN_DONE', 'FEEDBACK_EXECUTED'].includes(parsed.event)) {
-    console.debug('[Daaance BLE] Unknown event', parsed.event)
+  if (typeof packet.event === 'string' && !['HELLO', 'IMU_DATA', 'BUTTON_SINGLE_CLICK', 'COUNTDOWN_DONE', 'FEEDBACK_EXECUTED'].includes(packet.event)) {
+    console.debug('[Daaance BLE] Unknown event', packet.event)
     return { kind: 'ignored', reason: 'unknown' }
   }
 
-  if (!isKnownPacket(parsed) || parsed.pod !== 'left_wrist' || !isFiniteNumber(receivedAt)) {
-    if (parsed.event === 'FEEDBACK_EXECUTED') {
-      console.debug('[Daaance BLE] Invalid event', parsed.event)
+  if (!isKnownPacket(packet) || !isFiniteNumber(receivedAt)) {
+    if (packet.event === 'FEEDBACK_EXECUTED') {
+      console.debug('[Daaance BLE] Invalid event', packet.event)
     }
     return { kind: 'ignored', reason: 'invalid' }
   }
 
-  switch (parsed.event) {
+  switch (packet.event) {
     case 'HELLO':
       return {
         kind: 'event',
         event: {
-          type: 'hello', pod: parsed.pod, firmware: parsed.firmware,
+          type: 'hello', pod: packet.pod, firmware: packet.firmware,
           receivedAt,
         },
       }
@@ -89,35 +98,35 @@ export function parseBlePacket(value: string, receivedAt: number): BlePacketPars
       return {
         kind: 'event',
         event: {
-          type: 'imu', pod: parsed.pod, hardwareTimestamp: parsed.t, receivedAt,
-          ax: parsed.ax, ay: parsed.ay, az: parsed.az,
-          gx: parsed.gx, gy: parsed.gy, gz: parsed.gz,
+          type: 'imu', pod: packet.pod, hardwareTimestamp: packet.t, receivedAt,
+          ax: packet.ax, ay: packet.ay, az: packet.az,
+          gx: packet.gx, gy: packet.gy, gz: packet.gz,
         },
       }
     case 'BUTTON_SINGLE_CLICK':
       return {
         kind: 'event',
         event: {
-          type: 'button-single-click', pod: parsed.pod,
-          hardwareTimestamp: parsed.t, receivedAt,
+          type: 'button-single-click', pod: packet.pod,
+          hardwareTimestamp: packet.t, receivedAt,
         },
       }
     case 'COUNTDOWN_DONE':
       return {
         kind: 'event',
         event: {
-          type: 'countdown-done', pod: parsed.pod,
-          hardwareTimestamp: parsed.t, receivedAt,
+          type: 'countdown-done', pod: packet.pod,
+          hardwareTimestamp: packet.t, receivedAt,
         },
       }
     case 'FEEDBACK_EXECUTED':
       return {
         kind: 'event',
         event: {
-          type: 'feedback-executed', pod: parsed.pod,
-          hardwareTimestamp: parsed.t, receivedAt,
-          feedback: parsed.feedback,
-          outputs: parsed.outputs,
+          type: 'feedback-executed', pod: packet.pod,
+          hardwareTimestamp: packet.t, receivedAt,
+          feedback: packet.feedback,
+          outputs: packet.outputs,
         },
       }
   }

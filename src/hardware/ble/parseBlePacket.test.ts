@@ -35,6 +35,21 @@ describe('parseBlePacket', () => {
     })
   })
 
+  it.each([
+    ['LW', 'left_wrist'],
+    ['RW', 'right_wrist'],
+    ['LA', 'left_ankle'],
+    ['RA', 'right_ankle'],
+  ] as const)('normalizes firmware Pod alias %s to %s', (pod, normalizedPod) => {
+    expect(parseBlePacket(JSON.stringify({
+      event: 'IMU_DATA', pod, t: 123456,
+      ax: 0.12, ay: 0.35, az: 9.72, gx: 12.4, gy: 4.5, gz: 8.1,
+    }), 987.5)).toMatchObject({
+      kind: 'event',
+      event: { type: 'imu', pod: normalizedPod },
+    })
+  })
+
   it('normalizes a left-wrist BUTTON_SINGLE_CLICK packet', () => {
     expect(parseBlePacket(JSON.stringify({
       event: 'BUTTON_SINGLE_CLICK', pod: 'left_wrist', t: 200,
@@ -129,10 +144,10 @@ describe('parseBlePacket', () => {
     }), 2)).toEqual({ kind: 'ignored', reason: 'invalid' })
   })
 
-  it('ignores packets from a pod outside the phase-one left wrist', () => {
+  it('accepts canonical packets from another normalized Pod without changing internal IDs', () => {
     expect(parseBlePacket(JSON.stringify({
       event: 'BUTTON_SINGLE_CLICK', pod: 'right_wrist', t: 100,
-    }), 101)).toEqual({ kind: 'ignored', reason: 'invalid' })
+    }), 101)).toMatchObject({ kind: 'event', event: { pod: 'right_wrist' } })
   })
 
   it('ignores and logs an unknown event once per notification', () => {

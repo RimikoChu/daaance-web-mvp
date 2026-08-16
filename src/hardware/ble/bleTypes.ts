@@ -57,13 +57,13 @@ export type BluetoothPodPacket =
 export type BluetoothPodEvent =
   | {
     type: 'hello'
-    pod: 'left_wrist'
+    pod: DaaancePodId
     firmware: string
     receivedAt: number
   }
   | {
     type: 'imu'
-    pod: 'left_wrist'
+    pod: DaaancePodId
     hardwareTimestamp: number
     receivedAt: number
     ax: number
@@ -75,19 +75,19 @@ export type BluetoothPodEvent =
   }
   | {
     type: 'button-single-click'
-    pod: 'left_wrist'
+    pod: DaaancePodId
     hardwareTimestamp: number
     receivedAt: number
   }
   | {
     type: 'countdown-done'
-    pod: 'left_wrist'
+    pod: DaaancePodId
     hardwareTimestamp: number
     receivedAt: number
   }
   | {
     type: 'feedback-executed'
-    pod: 'left_wrist'
+    pod: DaaancePodId
     hardwareTimestamp: number
     receivedAt: number
     feedback: 'ERROR'

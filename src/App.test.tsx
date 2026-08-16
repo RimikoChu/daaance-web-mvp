@@ -80,7 +80,7 @@ function makeBluetoothBoundary() {
 }
 
 function notify(characteristic: FakeBluetoothCharacteristic, packet: string): void {
-  const bytes = new TextEncoder().encode(packet)
+  const bytes = new TextEncoder().encode(`${packet}\n`)
   characteristic.value = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   characteristic.dispatchEvent(new Event('characteristicvaluechanged'))
 }

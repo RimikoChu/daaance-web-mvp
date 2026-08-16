@@ -74,6 +74,10 @@ function notify(characteristic: FakeCharacteristic, text: string): void {
   characteristic.dispatchEvent(new Event('characteristicvaluechanged'))
 }
 
+function notifyLine(characteristic: FakeCharacteristic, text: string): void {
+  notify(characteristic, `${text}\n`)
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -180,6 +184,63 @@ describe('BluetoothPodClient discovery and notifications', () => {
     expect(client.getSnapshot()).toEqual({ state: 'connected', deviceName: 'DAAANCE_LW' })
   })
 
+  it('buffers fragmented firmware JSON until the newline and emits exactly one normalized IMU event', async () => {
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle, now: () => 987.5 })
+    const listener = vi.fn()
+    client.subscribe(listener)
+    await client.connect()
+    const line = JSON.stringify({
+      event: 'IMU_DATA', pod: 'LW', t: 63461,
+      ax: -2.617, ay: -9.659, az: -3.309, gx: 28.07, gy: 4.5, gz: 8.1, button: 0,
+    })
+    const chunks = [line.slice(0, 11), line.slice(11, 29), line.slice(29, 47), line.slice(47, 65), line.slice(65, 83), line.slice(83, 101), line.slice(101)]
+
+    for (const chunk of chunks) {
+      notify(harness.podTx, chunk)
+      expect(listener).not.toHaveBeenCalled()
+    }
+    notify(harness.podTx, '\n')
+
+    expect(listener).toHaveBeenCalledOnce()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'imu', pod: 'left_wrist', hardwareTimestamp: 63461, receivedAt: 987.5,
+      ax: -2.617, ay: -9.659, az: -3.309, gx: 28.07,
+    }))
+  })
+
+  it('emits every complete line from one notification and retains only the trailing fragment', async () => {
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })
+    const listener = vi.fn()
+    client.subscribe(listener)
+    await client.connect()
+
+    notify(harness.podTx, '{"event":"BUTTON_SINGLE_CLICK","pod":"LW","t":1}\n{"event":"COUNTDOWN_DONE","pod":"LW","t":2}\n{"event":"BUTTON')
+    expect(listener).toHaveBeenCalledTimes(2)
+    notify(harness.podTx, '_SINGLE_CLICK","pod":"LW","t":3}\n')
+
+    expect(listener).toHaveBeenCalledTimes(3)
+    expect(listener.mock.calls.map(([event]) => event.type)).toEqual(['button-single-click', 'countdown-done', 'button-single-click'])
+  })
+
+  it('clears an incomplete receive buffer across disconnect and reconnect', async () => {
+    const harness = makeBluetoothHarness()
+    const client = new BluetoothPodClient({ bluetooth: harness.bluetooth, config: configuredBle })
+    const listener = vi.fn()
+    client.subscribe(listener)
+    await client.connect()
+
+    notify(harness.podTx, '{"event":"IMU_DATA","pod":"LW"')
+    await client.disconnect()
+    await client.connect()
+    notify(harness.podTx, ',"t":1,"ax":0,"ay":0,"az":9.8,"gx":0,"gy":0,"gz":0}\n')
+    expect(listener).not.toHaveBeenCalled()
+
+    notifyLine(harness.podTx, '{"event":"BUTTON_SINGLE_CLICK","pod":"LW","t":2}')
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
   it('continues delivering valid events after a malformed notification', async () => {
     const harness = makeBluetoothHarness()
     const client = new BluetoothPodClient({
@@ -191,8 +252,8 @@ describe('BluetoothPodClient discovery and notifications', () => {
     client.subscribe(listener)
     await client.connect()
 
-    notify(harness.podTx, '{bad')
-    notify(harness.podTx, JSON.stringify({
+    notifyLine(harness.podTx, '{bad')
+    notifyLine(harness.podTx, JSON.stringify({
       event: 'IMU_DATA', pod: 'left_wrist', t: 123456,
       ax: 0.12, ay: 0.35, az: 9.72, gx: 12.4, gy: 4.5, gz: 8.1,
     }))
@@ -224,10 +285,10 @@ describe('BluetoothPodClient discovery and notifications', () => {
     client.subscribe(listener)
     await client.connect()
 
-    notify(harness.podTx, JSON.stringify({
+    notifyLine(harness.podTx, JSON.stringify({
       event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123456, feedback: 'ERROR', outputs: [],
     }))
-    notify(harness.podTx, JSON.stringify({
+    notifyLine(harness.podTx, JSON.stringify({
       event: 'FEEDBACK_EXECUTED', pod: 'left_wrist', t: 123457,
       feedback: 'ERROR', outputs: ['LED', 'VIBRATION'],
     }))
@@ -258,7 +319,7 @@ describe('BluetoothPodClient discovery and notifications', () => {
     client.subscribe(listener)
     await client.connect()
 
-    notify(harness.podTx, '{"event":"HELLO","pod":"left_wrist","firmware":"0.1.0"}')
+    notifyLine(harness.podTx, '{"event":"HELLO","pod":"left_wrist","firmware":"0.1.0"}')
 
     expect(listener).toHaveBeenCalledOnce()
     expect(listener).toHaveBeenCalledWith({
@@ -279,7 +340,7 @@ describe('BluetoothPodClient discovery and notifications', () => {
     await client.connect()
 
     harness.device.dispatchEvent(new Event('gattserverdisconnected'))
-    notify(harness.podTx, JSON.stringify({ event: 'BUTTON_SINGLE_CLICK', pod: 'left_wrist', t: 10 }))
+    notifyLine(harness.podTx, JSON.stringify({ event: 'BUTTON_SINGLE_CLICK', pod: 'left_wrist', t: 10 }))
 
     expect(client.getSnapshot()).toEqual({ state: 'disconnected' })
     expect(removePodTxListener).toHaveBeenCalledWith('characteristicvaluechanged', expect.any(Function))
@@ -501,7 +562,7 @@ describe('BluetoothPodClient commands and explicit cleanup', () => {
 
     await client.disconnect()
     await client.disconnect()
-    notify(harness.podTx, JSON.stringify({ event: 'BUTTON_SINGLE_CLICK', pod: 'left_wrist', t: 10 }))
+    notifyLine(harness.podTx, JSON.stringify({ event: 'BUTTON_SINGLE_CLICK', pod: 'left_wrist', t: 10 }))
 
     expect(harness.disconnect).toHaveBeenCalledOnce()
     expect(removePodTxListener).toHaveBeenCalledOnce()

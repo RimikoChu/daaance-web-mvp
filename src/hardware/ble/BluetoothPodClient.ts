@@ -102,15 +102,27 @@ export class BluetoothPodClient {
   private podRxCharacteristic: BluetoothRemoteGATTCharacteristicLike | undefined
   private activeAttempt: ConnectionAttempt | undefined
   private pendingConnection: Promise<void> | undefined
+  private readonly textDecoder = new TextDecoder()
+  private receiveBuffer = ''
 
   private readonly handleNotification: EventListener = () => {
     const value = this.podTxCharacteristic?.value
     if (!value) return
 
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    const result = parseBlePacket(new TextDecoder().decode(bytes), this.now())
-    if (result.kind === 'event') {
-      for (const listener of this.listeners) listener(result.event)
+    this.receiveBuffer += this.textDecoder.decode(bytes, { stream: true })
+
+    let newlineIndex = this.receiveBuffer.indexOf('\n')
+    while (newlineIndex !== -1) {
+      const line = this.receiveBuffer.slice(0, newlineIndex).trim()
+      this.receiveBuffer = this.receiveBuffer.slice(newlineIndex + 1)
+      if (line) {
+        const result = parseBlePacket(line, this.now())
+        if (result.kind === 'event') {
+          for (const listener of this.listeners) listener(result.event)
+        }
+      }
+      newlineIndex = this.receiveBuffer.indexOf('\n')
     }
   }
 
@@ -135,6 +147,7 @@ export class BluetoothPodClient {
       return
     }
 
+    this.clearReceiveBuffer()
     this.publishSnapshot({ state: 'connecting' })
     const attempt: ConnectionAttempt = { notificationListenerAttached: false }
     this.activeAttempt = attempt
@@ -198,6 +211,7 @@ export class BluetoothPodClient {
       this.activeAttempt = undefined
       this.cleanupAttempt(attempt, true)
       this.clearPublishedHandles()
+      this.clearReceiveBuffer()
       this.publishSnapshot({ state: 'error', error: this.failureFrom(error) })
       throw error
     }
@@ -295,6 +309,7 @@ export class BluetoothPodClient {
     this.pendingConnection = undefined
     if (attempt) this.cleanupAttempt(attempt, disconnectGatt)
     this.clearPublishedHandles()
+    this.clearReceiveBuffer()
   }
 
   private cleanupAttempt(attempt: ConnectionAttempt, disconnectGatt: boolean): void {
@@ -317,5 +332,10 @@ export class BluetoothPodClient {
     this.podTxCharacteristic = undefined
     this.podRxCharacteristic = undefined
     this.device = undefined
+  }
+
+  private clearReceiveBuffer(): void {
+    this.receiveBuffer = ''
+    this.textDecoder.decode()
   }
 }
