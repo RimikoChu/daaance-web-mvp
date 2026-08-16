@@ -334,6 +334,17 @@ describe('Daaance training flow', () => {
     expect(client.sendCommand).not.toHaveBeenCalledWith('START_COUNTDOWN')
   })
 
+  it('forwards synchronized choreography into the training screen', async () => {
+    render(<App choreography={[
+      { id: 'remote-cue', time: 0, limb: 'RIGHT_ANKLE', cue: 'STEP', accent: true },
+    ]} />)
+    await continueFromHome()
+    fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+
+    expect(screen.getByText('重拍提示 · 双腕长震')).toBeInTheDocument()
+    expect(screen.getAllByText('右脚踝').length).toBeGreaterThan(0)
+  })
+
   it('moves from home to setup after Demo is explicitly selected', async () => {
     render(<App />)
     await continueFromHome()

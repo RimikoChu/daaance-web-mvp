@@ -190,6 +190,22 @@ describe('Training', () => {
     expect(MockMotionDataSource).not.toHaveBeenCalled()
   })
 
+  it('uses an injected synchronized choreography for cues and completion analysis', () => {
+    const choreography: ChoreographyEvent[] = [
+      { id: 'remote-1', time: 100, limb: 'RIGHT_ANKLE', cue: 'STEP', accent: true },
+      { id: 'remote-2', time: 500, limb: 'LEFT_WRIST', cue: 'MOVE', accent: false },
+    ]
+    const getSamples = vi.fn<MotionDataSource['getSamples']>(() => [])
+    const onFinish = vi.fn()
+    render(<Training choreography={choreography} source={createSource(getSamples)} feedbackMode="accessibility" strictness="standard" onFinish={onFinish} onExit={vi.fn()} />)
+
+    expect(screen.getAllByText('右脚踝')).toHaveLength(2)
+    fireEvent.ended(screen.getByLabelText('18.66 秒舞蹈示范'))
+
+    expect(getSamples.mock.calls.map(([event]) => event.id)).toEqual(['remote-1', 'remote-2'])
+    expect(onFinish.mock.calls[0]?.[1].map((result: { event: ChoreographyEvent }) => result.event.id)).toEqual(['remote-1', 'remote-2'])
+  })
+
   it('auto-starts playback after valid metadata is available', () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     render(<Training source={createSource()} autoStart feedbackMode="accessibility" strictness="standard" onFinish={vi.fn()} onExit={vi.fn()} />)

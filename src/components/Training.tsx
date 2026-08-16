@@ -32,6 +32,7 @@ export interface TrainingProps {
   sessionLedger?: TrainingSessionLedger
   sessionSnapshot?: TrainingSessionSnapshot
   initialReviewTimestamp?: number
+  choreography?: ChoreographyEvent[]
 }
 
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
@@ -56,7 +57,7 @@ export function reviewSeekDestination(targetSeconds: number, duration: number): 
   return seekBy(targetSeconds, -(REVIEW_SEEK_PREROLL_MS / 1000), duration)
 }
 
-export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now(), sessionLedger, sessionSnapshot, initialReviewTimestamp }: TrainingProps) {
+export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now(), sessionLedger, sessionSnapshot, initialReviewTimestamp, choreography = CHOREOGRAPHY }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
   const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
@@ -89,7 +90,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   const [message, setMessage] = useState('视频已就绪，点击播放开始教学。')
   const [, setReviewLedgerRevision] = useState(0)
   const logicalTime = currentTime * 1000
-  const nextEvent = CHOREOGRAPHY.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
+  const nextEvent = choreography.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
   const activeLedger = sessionLedger ?? reviewLedgerRef.current
   const reviewSnapshot = sessionSnapshot ?? activeLedger?.snapshot()
   if (!reviewSnapshot) throw new Error('Training requires a review session snapshot')
@@ -135,7 +136,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   }
 
   const analyzeThrough = (timeMs: number) => {
-    for (const event of CHOREOGRAPHY) {
+    for (const event of choreography) {
       if (event.time + ANALYSIS_DELAY_MS <= timeMs) analyzeEvent(event)
     }
   }
@@ -207,7 +208,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     if (!sessionActiveRef.current || sessionSnapshot || finishedRef.current) return
     finishedRef.current = true
     setPlaying(false)
-    const completedResults = CHOREOGRAPHY.map(analyzeEvent)
+    const completedResults = choreography.map(analyzeEvent)
     const complete = () => {
       if (sessionActiveRef.current) onFinish(activeLedger!.snapshot(), completedResults)
     }
