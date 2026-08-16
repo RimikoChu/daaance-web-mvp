@@ -13,6 +13,7 @@ import { createErrorDeduplicator } from '../trainingReview/deduplicateErrors'
 import { createDemoDetector, createImuTimingDetector } from '../trainingReview/detectors'
 import { clusterReviewRanges } from '../trainingReview/clusterReviewRanges'
 import { createTrainingSessionLedger } from '../trainingReview/ledger'
+import type { TrainingSessionSnapshot } from '../trainingReview/types'
 
 type LearningMode = 'teaching' | 'follow'
 type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
@@ -20,13 +21,15 @@ type LeftWristTrainingStatus = 'demo' | 'connected' | 'disconnected' | 'error'
 export interface TrainingProps {
   feedbackMode: TrainingMode
   strictness: Strictness
-  onFinish: (results: TimingResult[]) => void
+  onFinish: (results: TimingResult[], snapshot: TrainingSessionSnapshot) => void
   onExit: () => void
   source: MotionDataSource
   autoStart?: boolean
   leftWristStatus?: LeftWristTrainingStatus
   onFeedbackError?: (eventId: string) => Promise<void> | void
   feedbackNow?: () => number
+  sessionSnapshot?: TrainingSessionSnapshot
+  initialReviewTimestamp?: number
 }
 
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
@@ -51,13 +54,13 @@ export function reviewSeekDestination(targetSeconds: number, duration: number): 
   return seekBy(targetSeconds, -(REVIEW_SEEK_PREROLL_MS / 1000), duration)
 }
 
-export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now() }: TrainingProps) {
+export function Training({ feedbackMode, strictness, onFinish, onExit, source, autoStart = false, leftWristStatus = 'demo', onFeedbackError, feedbackNow = () => globalThis.performance?.now() ?? Date.now(), sessionSnapshot, initialReviewTimestamp }: TrainingProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const finishedRef = useRef(false)
   const resultsByEventIdRef = useRef(new Map<string, TimingResult>())
   const reviewDeduplicatorRef = useRef(createErrorDeduplicator({ sustainedWindowMs: 1_000 }))
   const reviewLedgerRef = useRef<ReturnType<typeof createTrainingSessionLedger> | null>(null)
-  if (!reviewLedgerRef.current) reviewLedgerRef.current = createTrainingSession()
+  if (!sessionSnapshot && !reviewLedgerRef.current) reviewLedgerRef.current = createTrainingSession()
   const onFeedbackErrorRef = useRef(onFeedbackError)
   onFeedbackErrorRef.current = onFeedbackError
   const feedbackGuardRef = useRef<ReturnType<typeof createFeedbackGuard> | null>(null)
@@ -78,7 +81,8 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   const [, setReviewLedgerRevision] = useState(0)
   const logicalTime = currentTime * 1000
   const nextEvent = CHOREOGRAPHY.find(event => event.time >= logicalTime - 350 && event.time <= logicalTime + 600)
-  const reviewSnapshot = reviewLedgerRef.current.snapshot()
+  const reviewSnapshot = sessionSnapshot ?? reviewLedgerRef.current?.snapshot()
+  if (!reviewSnapshot) throw new Error('Training requires a review session snapshot')
   const reviewRanges = clusterReviewRanges(reviewSnapshot.errors)
 
   const analyzeEvent = (event: ChoreographyEvent): TimingResult => {
@@ -96,7 +100,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
       samples,
       receivedAt: Date.now(),
     }).filter(error => reviewDeduplicatorRef.current.accept(error))
-    if (newErrors.length > 0) {
+    if (!sessionSnapshot && newErrors.length > 0) {
       for (const error of newErrors) reviewLedgerRef.current?.appendError(error)
       setReviewLedgerRevision(revision => revision + 1)
     }
@@ -163,7 +167,7 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
     if (!video) return
     const time = video.currentTime
     setCurrentTime(time)
-    analyzeThrough(time * 1000)
+    if (!sessionSnapshot) analyzeThrough(time * 1000)
     if (learningMode === 'teaching') {
       const bounds = getSegmentBounds(activeSegment, duration)
       if (time >= bounds.end) {
@@ -176,10 +180,10 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
   }
 
   const finish = () => {
-    if (finishedRef.current) return
+    if (sessionSnapshot || finishedRef.current) return
     finishedRef.current = true
     setPlaying(false)
-    onFinish(CHOREOGRAPHY.map(analyzeEvent))
+    onFinish(CHOREOGRAPHY.map(analyzeEvent), reviewLedgerRef.current!.snapshot())
   }
 
   return <main className="training-page soft-glass-theme">
@@ -227,6 +231,15 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
               }
               setMediaAvailable(true)
               setDuration(mediaDuration)
+              if (initialReviewTimestamp !== undefined) {
+                const destination = reviewSeekDestination(initialReviewTimestamp / 1000, mediaDuration)
+                event.currentTarget.pause()
+                event.currentTarget.currentTime = destination
+                setCurrentTime(destination)
+                setActiveSegment(getTeachingSegment(destination, mediaDuration))
+                setMessage('正在回看已记录的动作误差。')
+                return
+              }
               setMessage('视频已就绪，点击播放开始教学。')
               if (autoStart) void event.currentTarget.play().catch(() => {
                 setPlaying(false)

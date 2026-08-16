@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Activity, ArrowLeft, Check, ChevronRight, CirclePlay, Footprints, RotateCcw, Sparkles, Volume2, Waves } from 'lucide-react'
+import { Activity, ArrowLeft, Check, ChevronRight, CirclePlay, Footprints, Sparkles, Volume2, Waves } from 'lucide-react'
 import { LIMB_LABEL } from './domain/choreography'
 import { summarizeSession } from './domain/motion'
 import { BLEMotionDataSource } from './domain/bleMotionDataSource'
@@ -14,6 +14,8 @@ import type { LeftWristHardwareClient, LeftWristHardwareController } from './har
 import { HardwareTestPanel } from './hardware/HardwareTestPanel'
 import { Training } from './components/Training'
 import { CountdownGate } from './components/CountdownGate'
+import { TrainingReport } from './components/TrainingReport'
+import type { TrainingSessionSnapshot } from './trainingReview/types'
 
 type Screen = 'home' | 'setup' | 'countdown' | 'training' | 'results'
 const LIMBS: Limb[] = ['LEFT_WRIST', 'RIGHT_WRIST', 'LEFT_ANKLE', 'RIGHT_ANKLE']
@@ -130,9 +132,10 @@ function Setup({ controller, feedbackMode, strictness, setFeedbackMode, setStric
   </main>
 }
 
-function Results({ results, onAgain, onHome }: { results: TimingResult[]; onAgain: () => void; onHome: () => void }) {
+function Results({ results, snapshot, onReviewTime, onAgain, onHome }: { results: TimingResult[]; snapshot: TrainingSessionSnapshot; onReviewTime: (timestamp: number) => void; onAgain: () => void; onHome: () => void }) {
   const summary = summarizeSession(results)
-  return <main className="page-shell results-page soft-glass-theme">
+  return <><TrainingReport snapshot={snapshot} onReviewTime={onReviewTime} onAgain={onAgain} onHome={onHome} />
+  <main className="page-shell results-page soft-glass-theme results-summary">
     <nav><Logo /><button className="text-button" onClick={onHome}>返回首页</button></nav>
     <section className="results-head"><div className="result-check"><Check /></div><div><span>训练记录已生成</span><h2>本次训练完成</h2><p>动作完成得不错。下面只展示最值得关注的信息。</p></div></section>
     <div className="results-grid">
@@ -140,8 +143,7 @@ function Results({ results, onAgain, onHome }: { results: TimingResult[]; onAgai
       <section className="limb-results"><h3>四肢表现</h3>{LIMBS.map(limb => { const item = summary.limbs[limb]; return <div className="limb-row" key={limb}><div className="limb-symbol">{limb.includes('WRIST') ? <Waves /> : <Footprints />}</div><div><strong>{item.label}</strong><small>{item.tendency === 'good' ? '节奏稳定' : item.averageError === null ? '动作未捕捉' : `平均 ${Math.abs(item.averageError)}ms ${item.averageError > 0 ? '偏晚' : '偏早'}`}</small></div><span className={item.tendency === 'good' ? 'good' : 'focus'}>{item.tendency === 'good' ? '很好' : '注意'}</span></div>})}</section>
       <section className="coach-card"><div><Sparkles /></div><span><small>Daaance! 教练建议</small><p>{summary.coaching}</p></span></section>
     </div>
-    <div className="result-actions"><button className="secondary" onClick={onHome}>回到首页</button><button className="primary" onClick={onAgain}><RotateCcw size={18} /> 再跳一次</button></div>
-  </main>
+  </main></>
 }
 
 export interface AppProps {
@@ -167,6 +169,8 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const [feedbackMode, setFeedbackMode] = useState<TrainingMode>('accessibility')
   const [strictness, setStrictness] = useState<Strictness>('standard')
   const [results, setResults] = useState<TimingResult[]>([])
+  const [completedSnapshot, setCompletedSnapshot] = useState<TrainingSessionSnapshot | null>(null)
+  const [reviewTimestamp, setReviewTimestamp] = useState<number | undefined>()
   const webNow = useCallback(() => client.getWebTimestamp(), [client])
   const sendFeedbackError = useCallback((_eventId: string) => hardware.sendCommand('FEEDBACK_ERROR'), [hardware.sendCommand])
   const ignoreFeedbackError = useCallback((_eventId: string) => {}, [])
@@ -174,6 +178,8 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
   const startTraining = (source: MotionDataSource, shouldAutoStart: boolean) => {
     setTrainingSource(source)
     setAutoStart(shouldAutoStart)
+    setReviewTimestamp(undefined)
+    setCompletedSnapshot(null)
     setScreen('training')
   }
 
@@ -183,6 +189,8 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       return
     }
     setAutoStart(false)
+    setReviewTimestamp(undefined)
+    setCompletedSnapshot(null)
     setScreen('training')
   }
 
@@ -219,8 +227,17 @@ export default function App({ hardwareClient, bleSource: injectedBleSource }: Ap
       onFeedbackError={trainingSource.kind === 'hybrid' ? sendFeedbackError : ignoreFeedbackError}
       feedbackNow={webNow}
       onExit={() => setScreen('setup')}
-      onFinish={value => { setResults(value); setScreen('results') }}
+      sessionSnapshot={reviewTimestamp === undefined ? undefined : completedSnapshot ?? undefined}
+      initialReviewTimestamp={reviewTimestamp}
+      onFinish={(value, snapshot) => { setResults(value); setCompletedSnapshot(snapshot); setScreen('results') }}
     />
   }
-  return <Results results={results} onHome={() => setScreen('home')} onAgain={restartTraining} />
+  if (!completedSnapshot) return <Results results={results} snapshot={{ schemaVersion: '1.0.0', sessionId: 'empty', startedAt: 0, errors: [], commands: [], executions: [] }} onReviewTime={() => {}} onHome={() => setScreen('home')} onAgain={restartTraining} />
+  return <Results
+    results={results}
+    snapshot={completedSnapshot}
+    onReviewTime={timestamp => { setReviewTimestamp(timestamp); setAutoStart(false); setScreen('training') }}
+    onHome={() => setScreen('home')}
+    onAgain={restartTraining}
+  />
 }

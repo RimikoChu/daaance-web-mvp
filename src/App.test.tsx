@@ -224,17 +224,17 @@ describe('Daaance training flow', () => {
         3,
         new TextEncoder().encode('FEEDBACK_ERROR'),
       )
-      const leftWristResult = screen.getByText('左手腕').closest<HTMLElement>('.limb-row')
+      const leftWristResult = within(document.querySelector<HTMLElement>('.results-summary')!).getByText('左手腕').closest<HTMLElement>('.limb-row')
       expect(leftWristResult).not.toBeNull()
       expect(within(leftWristResult!).getByText('动作未捕捉')).toBeInTheDocument()
       expect(within(leftWristResult!).getByText('注意')).toBeInTheDocument()
       for (const mockLimb of ['右手腕', '左脚踝']) {
-        const mockResult = screen.getByText(mockLimb).closest<HTMLElement>('.limb-row')
+        const mockResult = within(document.querySelector<HTMLElement>('.results-summary')!).getByText(mockLimb).closest<HTMLElement>('.limb-row')
         expect(mockResult).not.toBeNull()
         expect(within(mockResult!).getByText('节奏稳定')).toBeInTheDocument()
         expect(within(mockResult!).getByText('很好')).toBeInTheDocument()
       }
-      const rightAnkleResult = screen.getByText('右脚踝').closest<HTMLElement>('.limb-row')
+      const rightAnkleResult = within(document.querySelector<HTMLElement>('.results-summary')!).getByText('右脚踝').closest<HTMLElement>('.limb-row')
       expect(rightAnkleResult).not.toBeNull()
       expect(within(rightAnkleResult!).getByText('平均 307ms 偏晚')).toBeInTheDocument()
       expect(within(rightAnkleResult!).getByText('注意')).toBeInTheDocument()
@@ -428,7 +428,7 @@ describe('Daaance training flow', () => {
       fireEvent.ended(screen.getByLabelText('18.66 秒舞蹈示范'))
 
       expect(getMockSamplesForWindow).toHaveBeenCalled()
-      const leftWristResult = screen.getByText('左手腕').closest<HTMLElement>('.limb-row')
+      const leftWristResult = within(document.querySelector<HTMLElement>('.results-summary')!).getByText('左手腕').closest<HTMLElement>('.limb-row')
       expect(leftWristResult).not.toBeNull()
       expect(within(leftWristResult!).getByText('动作未捕捉')).toBeInTheDocument()
     } finally {
@@ -563,6 +563,24 @@ describe('Daaance training flow', () => {
     fireEvent.ended(screen.getByLabelText('18.66 秒舞蹈示范'))
     expect(screen.getByText('本次训练完成')).toBeInTheDocument()
     expect(screen.getByText('节奏准确率')).toBeInTheDocument()
+  })
+
+  it('opens the ledger-backed report and returns a selected error to the paused shared timeline without a countdown', async () => {
+    render(<App />)
+    await continueFromHome()
+    fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+    fireEvent.ended(screen.getByLabelText('18.66 秒舞蹈示范'))
+
+    expect(screen.getByRole('heading', { name: '训练复盘报告' })).toBeInTheDocument()
+    const row = screen.getAllByRole('row', { name: /left wrist.*timing.*demo-generated/i })[0]
+    fireEvent.click(within(row).getByRole('button', { name: 'Review moment' }))
+
+    const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+    Object.defineProperty(video, 'duration', { value: 18.66 })
+    fireEvent.loadedMetadata(video)
+    expect(video.currentTime).toBe(1)
+    expect(screen.queryByText('Waiting for DAAANCE_LW…')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /left wrist.*timing.*demo-generated/i }).length).toBeGreaterThan(0)
   })
 
   it('starts a Demo rerun directly with the all-Mock source', async () => {
