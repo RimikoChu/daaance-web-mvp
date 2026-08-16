@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Bluetooth, CirclePlay, Pause, Volume2, Waves } from 'lucide-react'
 import demoDance from '../assets/demo-dance.mp4'
+import demoDancePoster from '../assets/demo-dance-poster.png'
 import { CHOREOGRAPHY, LIMB_LABEL, TOLERANCE } from '../domain/choreography'
 import { analyzeTiming } from '../domain/motion'
 import type { ChoreographyEvent, Limb, MotionDataSource, Strictness, TimingResult, TrainingMode } from '../domain/types'
@@ -164,8 +165,9 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
             ref={videoRef}
             aria-label="18.66 秒舞蹈示范"
             src={demoDance}
+            poster={demoDancePoster}
             playsInline
-            preload="metadata"
+            preload="auto"
             onLoadedMetadata={event => {
               const mediaDuration = event.currentTarget.duration
               if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) {

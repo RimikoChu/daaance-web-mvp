@@ -54,6 +54,14 @@ describe('Training', () => {
     expect(screen.getByLabelText('18.66 秒舞蹈示范')).toHaveClass('video-stage-media')
   })
 
+  it('shows a real first-frame poster while Safari prepares the video', () => {
+    renderTraining()
+
+    const video = screen.getByLabelText('18.66 秒舞蹈示范')
+    expect(video).toHaveAttribute('preload', 'auto')
+    expect(video).toHaveAttribute('poster', expect.stringContaining('demo-dance-poster'))
+  })
+
   it('renders the supplied video and preserves time while switching modes', () => {
     renderTraining()
     const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
