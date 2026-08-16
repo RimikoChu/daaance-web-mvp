@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.api.json --noEmit && vite build",
+    "build:vercel": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"
