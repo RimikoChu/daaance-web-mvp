@@ -159,6 +159,18 @@ describe('Daaance training flow', () => {
     expect(within(hardwareTest).getByText('FEEDBACK_EXECUTED · hardware 45 ms · received 1025 ms · command uncorrelated · LED')).toBeInTheDocument()
   })
 
+  it('keeps Hardware Test available in production builds for real Pod testing', () => {
+    vi.stubEnv('DEV', false)
+    try {
+      render(<App />)
+      fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+
+      expect(screen.getByRole('region', { name: 'Hardware Test' })).toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('runs the real left-wrist closed loop through the fake Bluetooth boundary while the other Pods stay Demo', async () => {
     const boundary = makeBluetoothBoundary()
     let receivedAt = 100

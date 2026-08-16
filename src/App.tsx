@@ -133,7 +133,7 @@ function Setup({ controller, useRealHardware, feedbackMode, strictness, setUseRe
         </button>)}
       </div>
       <div className="setup-note"><Activity size={18} /><span><strong>{useRealHardware ? 'Hybrid 模式' : 'Mock IMU 已开启'}</strong>{useRealHardware ? '真实左腕与三个 Demo Pod 将进入同一训练流程。' : '四个 Mock Pod 将完整展示视频、动作检测和复盘报告。'}</span></div>
-      {import.meta.env.DEV && <HardwareTestPanel controller={controller} />}
+      <HardwareTestPanel controller={controller} />
       <button className="primary full" onClick={onStart}>开始舞蹈 <CirclePlay size={20} /></button>
     </section>
   </main>
