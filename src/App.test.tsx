@@ -718,6 +718,34 @@ describe('Daaance training flow', () => {
     }
   })
 
+  it('keeps Hybrid feedback and completion active through the StrictMode effect replay', async () => {
+    const client = new FakeHardwareClient()
+    const bleSource = new BLEMotionDataSource()
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+
+    try {
+      render(<StrictMode><App hardwareClient={client} bleSource={bleSource} /></StrictMode>)
+      fireEvent.click(screen.getByRole('button', { name: '开始训练' }))
+      fireEvent.click(screen.getByRole('button', { name: '开始舞蹈' }))
+      act(() => client.publishEvent({ type: 'countdown-done', pod: 'left_wrist', hardwareTimestamp: 700, receivedAt: 1_000 }))
+
+      const video = screen.getByLabelText('18.66 秒舞蹈示范') as HTMLVideoElement
+      Object.defineProperty(video, 'duration', { value: 18.66 })
+      fireEvent.loadedMetadata(video)
+      client.webNow = 5_000
+      video.currentTime = 2.5
+      fireEvent.timeUpdate(video)
+      await waitFor(() => expect(client.sendCommand).toHaveBeenLastCalledWith('FEEDBACK_ERROR'))
+
+      fireEvent.ended(video)
+
+      expect(await screen.findByRole('heading', { name: '训练复盘报告' })).toBeInTheDocument()
+      expect(screen.getByText('Command sent / execution unconfirmed')).toBeInTheDocument()
+    } finally {
+      play.mockRestore()
+    }
+  })
+
   it('ignores a deferred feedback completion from an exited session after a new real session begins', async () => {
     const client = new FakeHardwareClient()
     let resolveFeedbackWrite!: () => void

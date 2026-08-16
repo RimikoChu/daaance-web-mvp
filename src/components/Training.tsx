@@ -74,7 +74,10 @@ export function Training({ feedbackMode, strictness, onFinish, onExit, source, a
       send: eventId => onFeedbackErrorRef.current?.(eventId),
     })
   }
-  useEffect(() => () => { sessionActiveRef.current = false }, [])
+  useEffect(() => {
+    sessionActiveRef.current = true
+    return () => { sessionActiveRef.current = false }
+  }, [])
   const [learningMode, setLearningMode] = useState<LearningMode>('teaching')
   const [activeSegment, setActiveSegment] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
